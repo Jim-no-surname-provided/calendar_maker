@@ -5,7 +5,7 @@ import customtkinter as ctk
 from PIL import Image, ImageTk
 
 from model import CalendarModel, DaySchedule, Platform, WeekDay
-from renderer import render_calendar
+from renderer import RenderResources, render_calendar
 
 
 ctk.set_appearance_mode("dark")
@@ -20,6 +20,8 @@ class App:
 
         self.model = CalendarModel()
         self.day_image_labels = {}
+        self.day_widgets = {}
+        self.render_resources = RenderResources()
         self.day_preview_ctk_images = {}
         self.preview_canvas_image = None
         self.rendered_preview_image = None
@@ -262,36 +264,41 @@ class App:
         self.fanart_artist_entry.lift()
 
     def make_day_section(self, day: WeekDay):
+        day_schedule = self.get_day_schedule(day)
+
         # Make day section frame
         day_section = ctk.CTkFrame(self.left_content)
         day_section.pack(fill="x", padx=12, pady=8)
 
+        day_widgets = []
+        self.day_widgets[day] = day_widgets
+
         # Make day title
-        self.make_day_title(day_section, day)
+        self.make_day_title(day_section, day_schedule)
 
         # Make rest day checkbox
-        self.make_rest_day_checkbox(day_section, day)
+        self.make_rest_day_checkbox(day_section, day_schedule, day_widgets)
 
         # Make day image selector
-        self.make_day_image_selector(day_section, day)
+        self.make_day_image_selector(day_section, day_schedule)
 
         # Make stream title row
-        self.make_stream_title_row(day_section, day)
+        self.make_stream_title_row(day_section, day_schedule, day_widgets)
 
         # Make collab row
-        self.make_collab_row(day_section, day)
+        self.make_collab_row(day_section, day_schedule)
 
         # Make time row
-        self.make_time_row(day_section, day)
+        self.make_time_row(day_section, day_schedule)
 
         # Make platform selector
-        self.make_platform_selector(day_section, day)
+        self.make_platform_selector(day_section, day_schedule)
 
-    def make_day_title(self, parent, day: WeekDay):
+    def make_day_title(self, parent, day_schedule: DaySchedule):
         # Make day title label
         day_title = ctk.CTkLabel(
             parent,
-            text=day.value,
+            text=day_schedule.day.value,
             font=ctk.CTkFont(size=20, weight="bold"),
             anchor="w",
         )
@@ -304,11 +311,20 @@ class App:
         )
         day_separator.pack(fill="x", padx=12, pady=(0, 12))
 
-    def make_rest_day_checkbox(self, parent, day: WeekDay):
-        pass
+    def make_rest_day_checkbox(self, parent, day_schedule: DaySchedule, day_widgets):
+        # Make rest day variable
+        rest_day_var = ctk.BooleanVar(value=day_schedule.is_rest_day)
 
-    def make_day_image_selector(self, parent, day: WeekDay):
-        day_schedule = self.get_day_schedule(day)
+        # Make rest day checkbox
+        rest_day_checkbox = ctk.CTkCheckBox(
+            parent,
+            text="Descanso",
+            variable=rest_day_var,
+            command=lambda: self.on_rest_day_changed(day_schedule, rest_day_var, day_widgets),
+        )
+        rest_day_checkbox.pack(anchor="w", padx=12, pady=(0, 12))
+
+    def make_day_image_selector(self, parent, day_schedule: DaySchedule):
 
         # Make image selector frame
         image_selector = ctk.CTkFrame(parent, fg_color="transparent")
@@ -329,37 +345,78 @@ class App:
             text="Sin imagen seleccionada",
         )
         image_label.place(relx=0.5, rely=0.5, anchor="center")
-        self.day_image_labels[day] = image_label
+        self.day_image_labels[day_schedule.day] = image_label
 
         # Make select image button
         select_button = ctk.CTkButton(
             image_selector,
             text="Seleccionar imagen",
-            command=lambda selected_day=day: self.on_select_day_image(selected_day),
+            command=lambda selected_day_schedule=day_schedule: self.on_select_day_image(selected_day_schedule),
         )
         select_button.pack(fill="x")
 
         if day_schedule.image_path is not None:
-            self.update_day_image_preview(day, day_schedule.image_path)
+            self.update_day_image_preview(day_schedule.day, day_schedule.image_path)
 
-    def make_stream_title_row(self, parent, day: WeekDay):
+    def make_stream_title_row(self, parent, day_schedule: DaySchedule, day_widgets):
+        # Make stream title variable
+        stream_title_var = ctk.StringVar(value=day_schedule.title)
+        stream_title_var.trace_add(
+            "write",
+            lambda *_: self.on_stream_title_changed(day_schedule, stream_title_var),
+        )
+
+        # Make stream title row
+        stream_title_row = ctk.CTkFrame(parent, fg_color="transparent")
+        stream_title_row.pack(fill="x", padx=12, pady=(0, 12))
+
+        # Make stream title label
+        stream_title_label = ctk.CTkLabel(
+            stream_title_row,
+            text="Título",
+            width=80,
+            anchor="w",
+        )
+        stream_title_label.pack(side="left")
+
+        # Make stream title entry
+        stream_title_entry = ctk.CTkEntry(
+            stream_title_row,
+            textvariable=stream_title_var,
+            placeholder_text="Título del stream",
+        )
+        stream_title_entry.pack(side="left", fill="x", expand=True, padx=(8, 0))
+
+        day_widgets.append(stream_title_row)
+        day_widgets.append(stream_title_entry)
+
+    def make_collab_row(self, parent, day_schedule: DaySchedule):
         pass
 
-    def make_collab_row(self, parent, day: WeekDay):
+    def make_time_row(self, parent, day_schedule: DaySchedule):
         pass
 
-    def make_time_row(self, parent, day: WeekDay):
+    def make_platform_selector(self, parent, day_schedule: DaySchedule):
         pass
 
-    def make_platform_selector(self, parent, day: WeekDay):
-        pass
+    def on_rest_day_changed(self, day_schedule: DaySchedule, rest_day_var, day_widgets):
+        day_schedule.is_rest_day = rest_day_var.get()
 
-    def on_rest_day_changed(self, day: WeekDay):
-        pass
+        state = "disabled" if day_schedule.is_rest_day else "normal"
 
-    def on_select_day_image(self, day: WeekDay):
+        for widget in day_widgets:
+            try:
+                widget.configure(state=state)
+            except Exception:
+                pass
+
+        self.on_model_changed()
+
+    def on_select_day_image(self, day_schedule: DaySchedule):
+        # TODO: Add a way to crop and rotate
+
         image_path = filedialog.askopenfilename(
-            title=f"Seleccionar imagen para {day.value}",
+            title=f"Seleccionar imagen para {day_schedule.day.value}",
             filetypes=[
                 ("Imágenes", "*.png *.jpg *.jpeg *.webp"),
                 ("Todos los archivos", "*.*"),
@@ -369,10 +426,9 @@ class App:
         if not image_path:
             return
 
-        day_schedule = self.get_day_schedule(day)
         day_schedule.image_path = image_path
 
-        self.update_day_image_preview(day, image_path)
+        self.update_day_image_preview(day_schedule.day, image_path)
         self.on_model_changed()
 
     def update_day_image_preview(self, day: WeekDay, image_path: str):
@@ -402,8 +458,9 @@ class App:
 
         return self.model.days[day]
 
-    def on_stream_title_changed(self, day: WeekDay):
-        pass
+    def on_stream_title_changed(self, day_schedule: DaySchedule, stream_title_var):
+        day_schedule.title = stream_title_var.get()
+        self.on_model_changed()
 
     def on_collab_changed(self, day: WeekDay):
         pass
@@ -415,7 +472,7 @@ class App:
         pass
 
     def on_model_changed(self):
-        self.rendered_preview_image = render_calendar(self.model)
+        self.rendered_preview_image = render_calendar(self.model, self.render_resources)
         self.update_preview_canvas()
 
     def on_preview_canvas_resized(self, event=None):

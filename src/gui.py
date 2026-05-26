@@ -2,9 +2,10 @@ import tkinter as tk
 from tkinter import filedialog
 
 import customtkinter as ctk
-from PIL import Image
+from PIL import Image, ImageTk
 
-from model import CalendarModel, WeekDay
+from model import CalendarModel, DaySchedule, Platform, WeekDay
+from renderer import render_calendar
 
 
 ctk.set_appearance_mode("dark")
@@ -18,6 +19,10 @@ class App:
         self.root.geometry("1200x800")
 
         self.model = CalendarModel()
+        self.day_image_labels = {}
+        self.day_preview_ctk_images = {}
+        self.preview_canvas_image = None
+        self.rendered_preview_image = None
 
         self.create_layout()
 
@@ -66,14 +71,11 @@ class App:
         )
         self.preview_canvas.grid(row=0, column=0, sticky="nsew", padx=12, pady=12)
 
-        # Make preview text
-        self.preview_canvas.create_text(
-            400,
-            300,
-            text="Vista previa",
-            fill="white",
-            font=("Arial", 24),
-        )
+        # Redraw preview when canvas size changes
+        self.preview_canvas.bind("<Configure>", self.on_preview_canvas_resized)
+
+        # Render initial preview after layout is ready
+        self.root.after_idle(self.on_model_changed)
 
     def make_top_bar(self):
         self.top_bar = ctk.CTkFrame(
@@ -259,9 +261,197 @@ class App:
 
         self.fanart_artist_entry.lift()
 
-
     def make_day_section(self, day: WeekDay):
+        # Make day section frame
+        day_section = ctk.CTkFrame(self.left_content)
+        day_section.pack(fill="x", padx=12, pady=8)
+
+        # Make day title
+        self.make_day_title(day_section, day)
+
+        # Make rest day checkbox
+        self.make_rest_day_checkbox(day_section, day)
+
+        # Make day image selector
+        self.make_day_image_selector(day_section, day)
+
+        # Make stream title row
+        self.make_stream_title_row(day_section, day)
+
+        # Make collab row
+        self.make_collab_row(day_section, day)
+
+        # Make time row
+        self.make_time_row(day_section, day)
+
+        # Make platform selector
+        self.make_platform_selector(day_section, day)
+
+    def make_day_title(self, parent, day: WeekDay):
+        # Make day title label
+        day_title = ctk.CTkLabel(
+            parent,
+            text=day.value,
+            font=ctk.CTkFont(size=20, weight="bold"),
+            anchor="w",
+        )
+        day_title.pack(fill="x", padx=12, pady=(12, 4))
+
+        # Make day title separator
+        day_separator = ctk.CTkFrame(
+            parent,
+            height=2,
+        )
+        day_separator.pack(fill="x", padx=12, pady=(0, 12))
+
+    def make_rest_day_checkbox(self, parent, day: WeekDay):
+        pass
+
+    def make_day_image_selector(self, parent, day: WeekDay):
+        day_schedule = self.get_day_schedule(day)
+
+        # Make image selector frame
+        image_selector = ctk.CTkFrame(parent, fg_color="transparent")
+        image_selector.pack(fill="x", padx=12, pady=(0, 12))
+
+        # Make image preview
+        image_preview = ctk.CTkFrame(
+            image_selector,
+            height=140,
+            corner_radius=8,
+        )
+        image_preview.pack(fill="x", pady=(0, 8))
+        image_preview.pack_propagate(False)
+
+        # Make image preview label
+        image_label = ctk.CTkLabel(
+            image_preview,
+            text="Sin imagen seleccionada",
+        )
+        image_label.place(relx=0.5, rely=0.5, anchor="center")
+        self.day_image_labels[day] = image_label
+
+        # Make select image button
+        select_button = ctk.CTkButton(
+            image_selector,
+            text="Seleccionar imagen",
+            command=lambda selected_day=day: self.on_select_day_image(selected_day),
+        )
+        select_button.pack(fill="x")
+
+        if day_schedule.image_path is not None:
+            self.update_day_image_preview(day, day_schedule.image_path)
+
+    def make_stream_title_row(self, parent, day: WeekDay):
+        pass
+
+    def make_collab_row(self, parent, day: WeekDay):
+        pass
+
+    def make_time_row(self, parent, day: WeekDay):
+        pass
+
+    def make_platform_selector(self, parent, day: WeekDay):
+        pass
+
+    def on_rest_day_changed(self, day: WeekDay):
+        pass
+
+    def on_select_day_image(self, day: WeekDay):
+        image_path = filedialog.askopenfilename(
+            title=f"Seleccionar imagen para {day.value}",
+            filetypes=[
+                ("Imágenes", "*.png *.jpg *.jpeg *.webp"),
+                ("Todos los archivos", "*.*"),
+            ],
+        )
+
+        if not image_path:
+            return
+
+        day_schedule = self.get_day_schedule(day)
+        day_schedule.image_path = image_path
+
+        self.update_day_image_preview(day, image_path)
+        self.on_model_changed()
+
+    def update_day_image_preview(self, day: WeekDay, image_path: str):
+        image = Image.open(image_path)
+
+        max_width = 260
+        max_height = 120
+
+        image.thumbnail((max_width, max_height))
+
+        preview_image = ctk.CTkImage(
+            light_image=image,
+            dark_image=image,
+            size=image.size,
+        )
+
+        self.day_preview_ctk_images[day] = preview_image
+
+        self.day_image_labels[day].configure(
+            image=self.day_preview_ctk_images[day],
+            text="",
+        )
+
+    def get_day_schedule(self, day: WeekDay) -> DaySchedule:
+        if day not in self.model.days:
+            self.model.days[day] = DaySchedule(day=day)
+
+        return self.model.days[day]
+
+    def on_stream_title_changed(self, day: WeekDay):
+        pass
+
+    def on_collab_changed(self, day: WeekDay):
+        pass
+
+    def on_time_changed(self, day: WeekDay):
+        pass
+
+    def on_platform_changed(self, day: WeekDay):
         pass
 
     def on_model_changed(self):
-        pass
+        self.rendered_preview_image = render_calendar(self.model)
+        self.update_preview_canvas()
+
+    def on_preview_canvas_resized(self, event=None):
+        self.update_preview_canvas()
+
+    def update_preview_canvas(self):
+        # Get canvas size
+        canvas_width = self.preview_canvas.winfo_width()
+        canvas_height = self.preview_canvas.winfo_height()
+
+        if canvas_width <= 1 or canvas_height <= 1:
+            return
+
+        if self.rendered_preview_image is None:
+            return
+
+        # Make preview copy
+        preview_image = self.rendered_preview_image.copy()
+
+        # Fit image inside canvas
+        preview_image.thumbnail((canvas_width, canvas_height))
+
+        # Convert image for Tkinter
+        self.preview_canvas_image = ImageTk.PhotoImage(preview_image)
+
+        # Clear previous preview
+        self.preview_canvas.delete("all")
+
+        # Calculate centered position
+        x = canvas_width // 2
+        y = canvas_height // 2
+
+        # Draw preview image
+        self.preview_canvas.create_image(
+            x,
+            y,
+            image=self.preview_canvas_image,
+            anchor="center",
+        )

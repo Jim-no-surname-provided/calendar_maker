@@ -1,5 +1,8 @@
 import tkinter as tk
+from tkinter import filedialog
+
 import customtkinter as ctk
+from PIL import Image
 
 from model import CalendarModel, WeekDay
 
@@ -153,30 +156,23 @@ class App:
         )
         self.date_range_entry.pack(side="left", fill="x", expand=True, padx=(8, 0))
 
+        # Make fanart label
+        self.fanart_label = ctk.CTkLabel(
+            self.header_section,
+            text="Fanart",
+            anchor="w",
+        )
+        self.fanart_label.pack(fill="x", padx=12, pady=(12, 6))
+
         # Make fanart artist variable
         self.fanart_artist_var = ctk.StringVar(value=self.model.fanart_artist)
         self.fanart_artist_var.trace_add("write", self.on_fanart_artist_changed)
 
-        # Make fanart artist row
-        self.fanart_artist_row = ctk.CTkFrame(self.header_section, fg_color="transparent")
-        self.fanart_artist_row.pack(fill="x", padx=12, pady=(0, 8))
-
-        # Make fanart artist label
-        self.fanart_artist_label = ctk.CTkLabel(
-            self.fanart_artist_row,
-            text="Fanart",
-            width=80,
-            anchor="w",
+        # Make fanart artist overlay
+        self.fanart_artist_overlay = ctk.CTkFrame(
+            self.header_section,
+            fg_color="transparent",
         )
-        self.fanart_artist_label.pack(side="left")
-
-        # Make fanart artist entry
-        self.fanart_artist_entry = ctk.CTkEntry(
-            self.fanart_artist_row,
-            textvariable=self.fanart_artist_var,
-            placeholder_text="Nombre del artista",
-        )
-        self.fanart_artist_entry.pack(side="left", fill="x", expand=True, padx=(8, 0))
 
         # Make fanart preview
         self.fanart_preview = ctk.CTkFrame(
@@ -187,12 +183,26 @@ class App:
         self.fanart_preview.pack(fill="x", padx=12, pady=(0, 8))
         self.fanart_preview.pack_propagate(False)
 
-        # Make fanart preview text
-        self.fanart_preview_text = ctk.CTkLabel(
+        # Make fanart artist entry
+        self.fanart_artist_entry = ctk.CTkEntry(
+            self.fanart_preview,
+            textvariable=self.fanart_artist_var,
+            placeholder_text="Nombre del artista",
+            width=100,
+        )
+        self.fanart_artist_entry.place(
+            relx=1.0,
+            y=12,
+            x=-12,
+            anchor="ne",
+        )
+
+        # Make fanart preview image label
+        self.fanart_preview_image = ctk.CTkLabel(
             self.fanart_preview,
             text="Sin imagen seleccionada",
         )
-        self.fanart_preview_text.place(relx=0.5, rely=0.5, anchor="center")
+        self.fanart_preview_image.place(relx=0.5, rely=0.5, anchor="center")
 
         # Make fanart select button
         self.fanart_select_button = ctk.CTkButton(
@@ -211,10 +221,47 @@ class App:
         self.on_model_changed()
 
     def on_select_fanart_image(self):
+        image_path = filedialog.askopenfilename(
+            title="Seleccionar imagen de fanart",
+            filetypes=[
+                ("Imágenes", "*.png *.jpg *.jpeg *.webp"),
+                ("Todos los archivos", "*.*"),
+            ],
+        )
+
+        if not image_path:
+            return
+
+        self.model.fanart_image_path = image_path
+        self.update_fanart_preview(image_path)
+        self.on_model_changed()
+
+    def update_fanart_preview(self, image_path: str):
+        image = Image.open(image_path)
+
+        max_width = 220
+        max_height = 130
+
+        image.thumbnail((max_width, max_height))
+
+        preview_image = ctk.CTkImage(
+            light_image=image,
+            dark_image=image,
+            size=image.size,
+        )
+
+        self.fanart_preview_ctk_image = preview_image
+
+        self.fanart_preview_image.configure(
+            image=self.fanart_preview_ctk_image,
+            text="",
+        )
+
+        self.fanart_artist_entry.lift()
+
+
+    def make_day_section(self, day: WeekDay):
         pass
 
     def on_model_changed(self):
-        pass
-
-    def make_day_section(self, day: WeekDay):
         pass

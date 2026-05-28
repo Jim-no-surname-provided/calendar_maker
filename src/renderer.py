@@ -18,7 +18,7 @@ CANVAS_HEIGHT = 1920
 @dataclass
 class RenderResources:
     images: dict[Path, Image.Image] = field(default_factory=dict)
-    svgs: dict[tuple[Path, int, int], Image.Image] = field(default_factory=dict)
+    svgs: dict[tuple[Path, int, int, str], Image.Image] = field(default_factory=dict)
 
     def load_image(self, path: str | Path) -> Image.Image:
         path = self.resolve_path(path)
@@ -28,16 +28,27 @@ class RenderResources:
 
         return self.images[path].copy()
 
-    def load_svg(self, path: str | Path, width: int, height: int) -> Image.Image:
+    def load_svg(
+        self,
+        path: str | Path,
+        width: int,
+        height: int,
+        color: str = "#FFFFFF",
+    ) -> Image.Image:
         path = self.resolve_path(path)
-        cache_key = (path, width, height)
+        cache_key = (path, width, height, color)
 
         if cache_key not in self.svgs:
+            svg_text = path.read_text(encoding="utf-8")
+            svg_text = svg_text.replace('fill="white"', f'fill="{color}"')
+            svg_text = svg_text.replace("fill:white", f"fill:{color}")
+
             png_bytes = cairosvg.svg2png(
-                url=str(path),
+                bytestring=svg_text.encode("utf-8"),
                 output_width=width,
                 output_height=height,
             )
+
             if png_bytes is None:
                 raise RuntimeError(f"Could not render SVG: {path}")
 
@@ -50,6 +61,7 @@ class RenderResources:
         platform: Platform,
         width: int,
         height: int,
+        color: str = "#FFFFFF",
     ) -> Image.Image:
         filename_by_platform = {
             Platform.TWITCH: "TW.svg",
@@ -60,6 +72,7 @@ class RenderResources:
             RESOURCE_DIR / "platform" / filename_by_platform[platform],
             width,
             height,
+            color,
         )
 
     def resolve_path(self, path: str | Path) -> Path:

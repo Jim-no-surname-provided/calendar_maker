@@ -4,11 +4,33 @@
 #
 #    pip-compile requirements.in
 #
+cairocffi==1.7.1
+    # via cairosvg
+cairosvg==2.9.0
+    # via -r requirements.in
+cffi==2.0.0
+    # via cairocffi
+cssselect2==0.9.0
+    # via cairosvg
 customtkinter==5.2.2
     # via -r requirements.in
 darkdetect==0.8.0
     # via customtkinter
+defusedxml==0.7.1
+    # via cairosvg
 packaging==26.2
     # via customtkinter
 pillow==12.2.0
-    # via -r requirements.in
+    # via
+    #   -r requirements.in
+    #   cairosvg
+pycparser==3.0
+    # via cffi
+tinycss2==1.5.1
+    # via
+    #   cairosvg
+    #   cssselect2
+webencodings==0.5.1
+    # via
+    #   cssselect2
+    #   tinycss2

@@ -5,8 +5,7 @@ from pathlib import Path
 import cairosvg
 from PIL import Image
 
-from model import CalendarModel, Platform
-
+from model import CalendarModel, ImageAsset, Platform
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 RESOURCE_DIR = PROJECT_ROOT / "resources"
@@ -87,3 +86,48 @@ class RenderResources:
 def render_calendar(model: CalendarModel, resources: RenderResources) -> Image.Image:
     # TODO: Make this function
     return resources.load_image(RESOURCE_DIR / "FONDO" / "BG.PNG")
+
+def render_image_asset(
+    image_asset: ImageAsset,
+    resources: RenderResources,
+    width: int,
+    height: int,
+) -> Image.Image:
+    # Empty image
+    result = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+
+    if image_asset.path is None:
+        return result
+    
+    # Load actual image
+    image = resources.load_image(image_asset.path)
+    image.thumbnail((width, height))
+
+    # Center
+    x = (width - image.width) // 2
+    y = (height - image.height) // 2
+
+    # Paste
+    result.alpha_composite(image, (x, y))
+
+    crop_left = image_asset.crop_left * image.width
+    crop_top = image_asset.crop_top * image.height
+    crop_right = image_asset.crop_right * image.width
+    crop_bottom = image_asset.crop_bottom * image.height
+
+    # Gray out image area
+    overlay = Image.new("RGBA", image.size, (0, 0, 0, 200))
+
+    crop_box = (
+        round(crop_left),
+        round(crop_top),
+        round(crop_right),
+        round(crop_bottom),
+    )
+
+    # Paste selected crop area transparent
+    overlay.paste((0, 0, 0, 0), crop_box)
+
+    result.alpha_composite(overlay, (x, y))
+
+    return result

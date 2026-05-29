@@ -4,8 +4,10 @@ from tkinter import colorchooser, filedialog
 import customtkinter as ctk
 from PIL import ImageTk
 
-from model import CalendarModel, CollabMember, DaySchedule, Platform, WeekDay
-from renderer import RenderResources, render_calendar
+from model import CalendarModel, CollabMember, DaySchedule, Platform, WeekDay, ImageAsset
+from renderer import RenderResources, render_calendar, render_image_asset
+
+from collections.abc import Callable
 
 
 ctk.set_appearance_mode("dark")
@@ -34,26 +36,30 @@ REST_RADIO_STYLE = {
     "border_color": "#606060",
 }
 
-IMAGE_PREVIEW_HEIGHT = 130
-
 
 class ImagePreview:
     def __init__(
         self,
         parent,
-        height: int = IMAGE_PREVIEW_HEIGHT,
+        image_asset,
+        render_resources: RenderResources,
+        on_change : Callable[[], None],
+        width: int = 220,
+        height: int = 130,
     ):
-        # Make container
-        self.container = ctk.CTkFrame(parent)
-        self.container.pack(fill="x", padx=12, pady=(0, 12))
+        self.image_asset = image_asset
+        self.render_resources = render_resources
+        self.width = width
+        self.height = height
+        self.preview_image = None
 
         # Make preview frame
         self.frame = ctk.CTkFrame(
-            self.container,
+            parent,
             height=height,
             corner_radius=8,
         )
-        self.frame.pack(fill="x", pady=(0, 8))
+        self.frame.pack(fill="x", padx=12, pady=(0, 8))
         self.frame.pack_propagate(False)
 
         # Make preview label
@@ -65,17 +71,48 @@ class ImagePreview:
 
         # Make select button
         self.select_button = ctk.CTkButton(
-            self.container,
+            parent,
             text="Seleccionar imagen",
             command=self.on_select,
         )
-        self.select_button.pack(fill="x")
+        self.select_button.pack(fill="x", padx=12, pady=(0, 8))
 
-    def on_select(self):
-        pass
+        if image_asset.path is not None:
+            self.update()
 
     def update(self):
-        pass
+        image = render_image_asset(
+            self.image_asset,
+            self.render_resources,
+            self.width,
+            self.height,
+        )
+
+        self.preview_image = ctk.CTkImage(
+            light_image=image,
+            dark_image=image,
+            size=(self.width, self.height),
+        )
+
+        self.label.configure(
+            image=self.preview_image,
+            text="",
+        )
+
+    def on_select(self):
+        image_path = filedialog.askopenfilename(
+            title="Seleccionar imagen",
+            filetypes=[
+                ("Imágenes", "*.png *.jpg *.jpeg *.webp"),
+                ("Todos los archivos", "*.*"),
+            ],
+        )
+
+        if not image_path:
+            return
+
+        self.image_asset.path = image_path
+        self.update()
 
 
 class App:
@@ -139,7 +176,7 @@ class App:
         self.preview_canvas.pack(fill="both", expand=True, padx=12, pady=12)
 
         # Redraw preview when canvas size changes
-        self.preview_canvas.bind("<Configure>", self.on_preview_canvas_resized)
+        self.preview_canvas.bind("<Configure>", lambda _: self.on_model_changed())
 
         # Render initial preview after layout is ready
         self.root.after_idle(self.on_model_changed)
@@ -252,12 +289,8 @@ class App:
         # Make fanart label
         self.labeled_row(header_section, "Artista", self.fanart_artist_var)
 
-        # Make fanart image selector
-        fanart_image_selector = ctk.CTkFrame(header_section, fg_color="transparent")
-        fanart_image_selector.pack(fill="x", padx=12, pady=(0, 12))
-
         # Make fanart preview
-        ImagePreview(fanart_image_selector)
+        ImagePreview(header_section, self.model.fanart, self.render_resources, self.on_model_changed)
 
     def make_day_section(self, parent, day: WeekDay):
         day_schedule = self.get_day_schedule(day)
@@ -320,18 +353,8 @@ class App:
         rest_day_checkbox.pack(anchor="w", padx=12, pady=(0, 12))
 
     def make_day_image_selector(self, parent, day_schedule: DaySchedule, disable_list):
-
-        # Make image selector frame
-        image_selector = ctk.CTkFrame(parent, fg_color="transparent")
-        image_selector.pack(fill="x", padx=12, pady=(0, 12))
-
-        # Make image preview
-        day_preview = ImagePreview(image_selector)
-
-        disable_list.append(image_selector)
-
-        if day_schedule.image_path is not None:
-            day_preview.update()
+        image = ImagePreview(parent, self.model.fanart, self.render_resources, self.on_model_changed)
+        disable_list.append(image)
 
     def make_stream_title_row(self, parent, day_schedule: DaySchedule, disable_list):
         def update_title(day_schedule: DaySchedule, stream_title_var):
@@ -736,21 +759,18 @@ class App:
         self.schedule_preview_update()
 
     def schedule_preview_update(self):
+        def render_preview():
+            self.preview_update_job = None
+            self.rendered_preview_image = render_calendar(self.model, self.render_resources)
+            self.update_preview_canvas()
+
         if self.preview_update_job is not None:
             self.root.after_cancel(self.preview_update_job)
 
         self.preview_update_job = self.root.after(
             120,
-            self.render_preview,
+            render_preview,
         )
-
-    def render_preview(self):
-        self.preview_update_job = None
-        self.rendered_preview_image = render_calendar(self.model, self.render_resources)
-        self.update_preview_canvas()
-
-    def on_preview_canvas_resized(self, event=None):
-        self.update_preview_canvas()
 
     def update_preview_canvas(self):
         # Get canvas size

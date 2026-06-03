@@ -83,7 +83,6 @@ class RenderResources:
 
         return PROJECT_ROOT / path
 
-
 def render_calendar(model: CalendarModel, resources: RenderResources) -> Image.Image:
     # TODO: Make this function
     return resources.load_image(RESOURCE_DIR / "FONDO" / "BG.PNG")

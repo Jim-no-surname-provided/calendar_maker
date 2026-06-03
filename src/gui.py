@@ -53,6 +53,9 @@ class ImagePreview:
         self.height = height
         self.preview_image = None
         self.on_change = on_change
+        self.crop_start_x = 0
+        self.crop_start_y = 0
+        self.selection_rectangle = None
 
         # Make preview frame
         self.frame = ctk.CTkFrame(
@@ -71,21 +74,21 @@ class ImagePreview:
         )
 
         # make canvas smaller than frame so frame color is visible as a border
-        self.canvas.pack(fill="both", expand=True, padx=32, pady=32)
+        self.canvas.pack(fill="both", expand=True, padx=8, pady=8)
         # redraw on resize so centering stays correct
         # debounce resize updates
         self._resize_job = None
+
         def on_resize(event):
             if self._resize_job is not None:
                 self.canvas.after_cancel(self._resize_job)
             self._resize_job = self.canvas.after(50, self.update)
         self.canvas.bind("<Configure>", on_resize)
 
-        # Bind cursor + events (kept for later use)
-        for widget in (self.frame, self.canvas):
-            widget.configure(cursor="hand2")
-            widget.bind("<Button-1>", self.on_crop_start)
-            widget.bind("<ButtonRelease-1>", self.on_crop_end)
+        self.canvas.configure(cursor="hand2")
+        self.canvas.bind("<Button-1>", self.on_crop_start)
+        self.canvas.bind("<ButtonRelease-1>", self.on_crop_end)
+        self.canvas.bind("<B1-Motion>", self.on_crop_drag)
 
         # Make select button
         self.select_button = ctk.CTkButton(
@@ -109,11 +112,16 @@ class ImagePreview:
             canvas_width = self.width
             canvas_height = self.height
 
+        MARGIN = 16
+
+        preview_width = canvas_width - 2 * MARGIN
+        preview_height = canvas_height - 2 * MARGIN
+
         image = render_image_asset(
             self.image_asset,
             self.render_resources,
-            canvas_width,
-            canvas_height,
+            preview_width,
+            preview_height,
         )
 
         # Clear canvas
@@ -136,12 +144,25 @@ class ImagePreview:
         x = canvas_width // 2
         y = canvas_height // 2
 
+        # Store image bounds
+        self.image_left = x - image.width // 2
+        self.image_top = y - image.height // 2
+
+        self.image_right = self.image_left + image.width
+        self.image_bottom = self.image_top + image.height
+
         self.canvas.create_image(
             x,
             y,
             image=self.canvas_image,
             anchor="center",
         )
+
+    def clamp_to_image(self, x, y):
+        x = max(self.image_left, min(x, self.image_right))
+        y = max(self.image_top, min(y, self.image_bottom))
+
+        return x, y
 
     def on_select(self):
         image_path = filedialog.askopenfilename(
@@ -168,9 +189,72 @@ class ImagePreview:
         if self.image_asset.path is None:
             self.on_select()
             return
-        pass
+
+        # Start crop
+        self.crop_start_x = event.x
+        self.crop_start_y = event.y
+
+        # Reset previous rectangle
+        if self.selection_rectangle is not None:
+            self.canvas.delete(self.selection_rectangle)
+
+        # Create new rectangle
+        self.selection_rectangle = self.canvas.create_rectangle(
+            event.x,
+            event.y,
+            event.x,
+            event.y,
+            outline="red",
+            width=2,
+        )
+
+    def on_crop_drag(self, event):
+        if self.selection_rectangle is None:
+            return
+
+        self.canvas.coords(
+            self.selection_rectangle,
+            self.crop_start_x,
+            self.crop_start_y,
+            event.x,
+            event.y,
+        )
+
     def on_crop_end(self, event):
-        pass
+        if self.selection_rectangle is None:
+            return
+
+        # Clamp start/end to image
+        start_x, start_y = self.clamp_to_image(
+            self.crop_start_x,
+            self.crop_start_y,
+        )
+
+        end_x, end_y = self.clamp_to_image(
+            event.x,
+            event.y,
+        )
+
+        # Convert to image coordinates
+        start_x -= self.image_left
+        start_y -= self.image_top
+
+        end_x -= self.image_left
+        end_y -= self.image_top
+
+        # Normalize
+        image_width = self.image_right - self.image_left
+        image_height = self.image_bottom - self.image_top
+
+        self.image_asset.crop_left = min(start_x, end_x) / image_width
+        self.image_asset.crop_top = min(start_y, end_y) / image_height
+
+        self.image_asset.crop_right = max(start_x, end_x) / image_width
+        self.image_asset.crop_bottom = max(start_y, end_y) / image_height
+
+        self.update()
+        self.on_change()
+
 
 class App:
     def __init__(self, root):

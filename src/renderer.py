@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from io import BytesIO
 from pathlib import Path
+import customtkinter as ctk
 
 import cairosvg
 from PIL import Image
@@ -131,3 +132,20 @@ def render_image_asset(
     result.alpha_composite(overlay, (x, y))
 
     return result
+
+def get_ctk_color(widget, option="fg_color"):
+    color = widget.cget(option)
+
+    if isinstance(color, (tuple, list)):
+
+        return (
+
+            color[1]
+
+            if ctk.get_appearance_mode() == "Dark"
+
+            else color[0]
+
+        )
+
+    return color

@@ -5,7 +5,7 @@ import customtkinter as ctk
 from PIL import ImageTk
 
 from model import CalendarModel, CollabMember, DaySchedule, Platform, WeekDay, ImageAsset
-from renderer import RenderResources, render_calendar, render_image_asset
+from renderer import RenderResources, render_calendar, render_image_asset, get_ctk_color
 
 from collections.abc import Callable
 
@@ -43,15 +43,16 @@ class ImagePreview:
         parent,
         image_asset,
         render_resources: RenderResources,
-        on_change : Callable[[], None],
+        on_change: Callable[[], None],
         width: int = 220,
-        height: int = 130,
+        height: int = 180,
     ):
-        self.image_asset = image_asset
+        self.image_asset: ImageAsset = image_asset
         self.render_resources = render_resources
         self.width = width
         self.height = height
         self.preview_image = None
+        self.on_change = on_change
 
         # Make preview frame
         self.frame = ctk.CTkFrame(
@@ -59,15 +60,32 @@ class ImagePreview:
             height=height,
             corner_radius=8,
         )
-        self.frame.pack(fill="x", padx=12, pady=(0, 8))
+        self.frame.pack(fill="x", padx=12, pady=(0, 8), ipadx=16, ipady=16)
         self.frame.pack_propagate(False)
 
-        # Make preview label
-        self.label = ctk.CTkLabel(
+        # Make preview canvas
+        self.canvas = tk.Canvas(
             self.frame,
-            text="Sin imagen seleccionada",
+            highlightthickness=0,
+            bg=get_ctk_color(self.frame),
         )
-        self.label.place(relx=0.5, rely=0.5, anchor="center")
+
+        # make canvas smaller than frame so frame color is visible as a border
+        self.canvas.pack(fill="both", expand=True, padx=32, pady=32)
+        # redraw on resize so centering stays correct
+        # debounce resize updates
+        self._resize_job = None
+        def on_resize(event):
+            if self._resize_job is not None:
+                self.canvas.after_cancel(self._resize_job)
+            self._resize_job = self.canvas.after(50, self.update)
+        self.canvas.bind("<Configure>", on_resize)
+
+        # Bind cursor + events (kept for later use)
+        for widget in (self.frame, self.canvas):
+            widget.configure(cursor="hand2")
+            widget.bind("<Button-1>", self.on_crop_start)
+            widget.bind("<ButtonRelease-1>", self.on_crop_end)
 
         # Make select button
         self.select_button = ctk.CTkButton(
@@ -77,26 +95,52 @@ class ImagePreview:
         )
         self.select_button.pack(fill="x", padx=12, pady=(0, 8))
 
-        if image_asset.path is not None:
-            self.update()
+        self.update()
 
     def update(self):
+        # Ensure canvas has real size
+        self.canvas.update_idletasks()
+
+        canvas_width = self.canvas.winfo_width()
+        canvas_height = self.canvas.winfo_height()
+
+        # Fallback before layout is ready
+        if canvas_width <= 1 or canvas_height <= 1:
+            canvas_width = self.width
+            canvas_height = self.height
+
         image = render_image_asset(
             self.image_asset,
             self.render_resources,
-            self.width,
-            self.height,
+            canvas_width,
+            canvas_height,
         )
 
-        self.preview_image = ctk.CTkImage(
-            light_image=image,
-            dark_image=image,
-            size=(self.width, self.height),
-        )
+        # Clear canvas
+        self.canvas.delete("all")
 
-        self.label.configure(
-            image=self.preview_image,
-            text="",
+        if self.image_asset.path is None:
+            self.canvas.create_text(
+                canvas_width // 2,
+                canvas_height // 2,
+                text="Sin imagen seleccionada",
+                fill="#aaaaaa",
+                font=ctk.CTkFont(size=22),
+                anchor="center",
+            )
+            return
+
+        # Draw image centered using real canvas size
+        self.canvas_image = ImageTk.PhotoImage(image)
+
+        x = canvas_width // 2
+        y = canvas_height // 2
+
+        self.canvas.create_image(
+            x,
+            y,
+            image=self.canvas_image,
+            anchor="center",
         )
 
     def on_select(self):
@@ -111,9 +155,22 @@ class ImagePreview:
         if not image_path:
             return
 
+        self.frame.configure(cursor="crosshair")
+        self.canvas.configure(cursor="crosshair")
+
         self.image_asset.path = image_path
         self.update()
 
+    def winfo_children(self):
+        return [self.frame, self.canvas, self.select_button]
+
+    def on_crop_start(self, event):
+        if self.image_asset.path is None:
+            self.on_select()
+            return
+        pass
+    def on_crop_end(self, event):
+        pass
 
 class App:
     def __init__(self, root):
@@ -308,7 +365,8 @@ class App:
         self.make_rest_day_checkbox(day_section, day_schedule, disable_list)
 
         # Make day image selector
-        self.make_day_image_selector(day_section, day_schedule, disable_list)
+        image = ImagePreview(day_section, day_schedule.image, self.render_resources, self.on_model_changed)
+        disable_list.append(image)
 
         # Make stream title row
         self.make_stream_title_row(day_section, day_schedule, disable_list)
@@ -351,10 +409,6 @@ class App:
             command=lambda: self.update_rest(day_schedule, rest_day_var, disable_list),
         )
         rest_day_checkbox.pack(anchor="w", padx=12, pady=(0, 12))
-
-    def make_day_image_selector(self, parent, day_schedule: DaySchedule, disable_list):
-        image = ImagePreview(parent, self.model.fanart, self.render_resources, self.on_model_changed)
-        disable_list.append(image)
 
     def make_stream_title_row(self, parent, day_schedule: DaySchedule, disable_list):
         def update_title(day_schedule: DaySchedule, stream_title_var):

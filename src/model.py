@@ -26,14 +26,10 @@ class CollabMember:
 @dataclass
 class ImageAsset:
     path: str | None = None
-    # crop_left: float = 0.0
-    # crop_top: float = 0.0
-    # crop_right: float = 1.0
-    # crop_bottom: float = 1.0
-    crop_left: float = 0.2
-    crop_top: float = 0.2
-    crop_right: float = 0.8
-    crop_bottom: float = 0.8
+    crop_left: float = 0.0
+    crop_top: float = 0.0
+    crop_right: float = 1.0
+    crop_bottom: float = 1.0
 
 
 @dataclass

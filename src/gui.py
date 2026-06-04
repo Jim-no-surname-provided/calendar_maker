@@ -74,7 +74,7 @@ class ImagePreview:
         )
 
         # make canvas smaller than frame so frame color is visible as a border
-        self.canvas.pack(fill="both", expand=True, padx=8, pady=8)
+        self.canvas.pack(fill="both", expand=True, padx=4, pady=4)
         # redraw on resize so centering stays correct
         # debounce resize updates
         self._resize_job = None
@@ -176,7 +176,6 @@ class ImagePreview:
         if not image_path:
             return
 
-        self.frame.configure(cursor="crosshair")
         self.canvas.configure(cursor="crosshair")
 
         self.image_asset.path = image_path
@@ -458,6 +457,9 @@ class App:
         # Make collab row
         self.make_collab_row(day_section, day_schedule, disable_list)
 
+        # Make subtitle row
+        self.make_subtitle_row(day_section, day_schedule, disable_list)
+
         # Make time row
         self.make_time_row(day_section, day_schedule, disable_list)
 
@@ -514,6 +516,27 @@ class App:
         )
 
         disable_list.append(stream_title_row)
+
+    def make_subtitle_row(self, parent, day_schedule: DaySchedule, disable_list):
+        def update_subtitle(day_schedule: DaySchedule, stream_subtitle_var):
+            day_schedule.subtitle = stream_subtitle_var.get()
+            self.on_model_changed()
+
+        # Make stream subtitle variable
+        stream_subtitle_var = ctk.StringVar(value=day_schedule.subtitle)
+        stream_subtitle_var.trace_add(
+            "write",
+            lambda *_: update_subtitle(day_schedule, stream_subtitle_var),
+        )
+
+        # Make stream subtitle row
+        stream_subtitle_row, _, _ = self.labeled_row(
+            parent,
+            "Subtítulo",
+            stream_subtitle_var,
+        )
+
+        disable_list.append(stream_subtitle_row)
 
     def make_collab_row(self, parent, day_schedule: DaySchedule, disable_list):
         # Make collab section frame

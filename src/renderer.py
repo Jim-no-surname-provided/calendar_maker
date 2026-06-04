@@ -69,7 +69,7 @@ class RenderResources:
         }
 
         return self.load_svg(
-            RESOURCE_DIR / "platform" / filename_by_platform[platform],
+            RESOURCE_DIR / "icons" / filename_by_platform[platform],
             width,
             height,
             color,
@@ -85,7 +85,7 @@ class RenderResources:
 
 def render_calendar(model: CalendarModel, resources: RenderResources) -> Image.Image:
     # TODO: Make this function
-    return resources.load_image(RESOURCE_DIR / "FONDO" / "BG.PNG")
+    return resources.load_image(RESOURCE_DIR / "background.png")
 
 def render_image_asset(
     image_asset: ImageAsset,
@@ -94,21 +94,18 @@ def render_image_asset(
     height: int,
 ) -> Image.Image:
     # Empty image
-    result = Image.new("RGBA", (width, height), (0, 0, 0, 0))
 
     if image_asset.path is None:
-        return result
+        return Image.new("RGBA", (width, height), (0, 0, 0, 0))
     
     # Load actual image
     image = resources.load_image(image_asset.path)
     image.thumbnail((width, height))
-
-    # Center
-    x = (width - image.width) // 2
-    y = (height - image.height) // 2
+    
+    result = Image.new("RGBA", (image.width, image.height), (0, 0, 0, 0))
 
     # Paste
-    result.alpha_composite(image, (x, y))
+    result.alpha_composite(image)
 
     crop_left = image_asset.crop_left * image.width
     crop_top = image_asset.crop_top * image.height
@@ -128,7 +125,7 @@ def render_image_asset(
     # Paste selected crop area transparent
     overlay.paste((0, 0, 0, 0), crop_box)
 
-    result.alpha_composite(overlay, (x, y))
+    result.alpha_composite(overlay)
 
     return result
 
@@ -148,3 +145,12 @@ def get_ctk_color(widget, option="fg_color"):
         )
 
     return color
+    
+@dataclass(frozen=True)
+class DayStyle:
+    frame_path: str
+    mask_path: str
+    text_color: str
+
+
+

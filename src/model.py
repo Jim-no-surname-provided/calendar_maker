@@ -24,7 +24,7 @@ class CollabMember:
 
 
 @dataclass
-class ImageAsset:
+class ThumbnailModel:
     path: str | None = None
     crop_left: float = 0.0
     crop_top: float = 0.0
@@ -33,10 +33,10 @@ class ImageAsset:
 
 
 @dataclass
-class DaySchedule:
+class DayModel:
     day: WeekDay
     is_rest_day: bool = False
-    image: ImageAsset = field(default_factory=ImageAsset)
+    image: ThumbnailModel = field(default_factory=ThumbnailModel)
     title: str = ""
     subtitle: str = ""
     platform: Platform = Platform.TWITCH
@@ -47,6 +47,9 @@ class DaySchedule:
 @dataclass
 class CalendarModel:
     date_range: str = ""
-    fanart: ImageAsset = field(default_factory=ImageAsset)
+    fanart: ThumbnailModel = field(default_factory=ThumbnailModel)
     fanart_artist: str = ""
-    days: dict[WeekDay, DaySchedule] = field(default_factory=dict)
+    days: dict[WeekDay, DayModel] = field(default_factory=lambda: {
+        day: DayModel(day)
+        for day in WeekDay
+    })

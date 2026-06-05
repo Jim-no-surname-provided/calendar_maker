@@ -1,13 +1,14 @@
 import tkinter as tk
-from tkinter import colorchooser, filedialog
+from tkinter import colorchooser
 
 import customtkinter as ctk
 from PIL import ImageTk
 
-from model import CalendarModel, CollabMember, DaySchedule, Platform, WeekDay, ImageAsset
-from renderer import RenderResources, render_calendar, render_image_asset, get_ctk_color
-
-from collections.abc import Callable
+from model import CalendarModel, CollabMember, DayModel, Platform, WeekDay
+from render.resources_loader import ResourcesLoader
+from thumbnail_preview import ThumbnailPreview
+from render.calendar_renderer import CalendarRenderer
+from threading import Thread
 
 
 ctk.set_appearance_mode("dark")
@@ -37,224 +38,6 @@ REST_RADIO_STYLE = {
 }
 
 
-class ImagePreview:
-    def __init__(
-        self,
-        parent,
-        image_asset,
-        render_resources: RenderResources,
-        on_change: Callable[[], None],
-        width: int = 220,
-        height: int = 180,
-    ):
-        self.image_asset: ImageAsset = image_asset
-        self.render_resources = render_resources
-        self.width = width
-        self.height = height
-        self.preview_image = None
-        self.on_change = on_change
-        self.crop_start_x = 0
-        self.crop_start_y = 0
-        self.selection_rectangle = None
-
-        # Make preview frame
-        self.frame = ctk.CTkFrame(
-            parent,
-            height=height,
-            corner_radius=8,
-        )
-        self.frame.pack(fill="x", padx=12, pady=(0, 8), ipadx=16, ipady=16)
-        self.frame.pack_propagate(False)
-
-        # Make preview canvas
-        self.canvas = tk.Canvas(
-            self.frame,
-            highlightthickness=0,
-            bg=get_ctk_color(self.frame),
-        )
-
-        # make canvas smaller than frame so frame color is visible as a border
-        self.canvas.pack(fill="both", expand=True, padx=4, pady=4)
-        # redraw on resize so centering stays correct
-        # debounce resize updates
-        self._resize_job = None
-
-        def on_resize(event):
-            if self._resize_job is not None:
-                self.canvas.after_cancel(self._resize_job)
-            self._resize_job = self.canvas.after(50, self.update)
-        self.canvas.bind("<Configure>", on_resize)
-
-        self.canvas.configure(cursor="hand2")
-        self.canvas.bind("<Button-1>", self.on_crop_start)
-        self.canvas.bind("<ButtonRelease-1>", self.on_crop_end)
-        self.canvas.bind("<B1-Motion>", self.on_crop_drag)
-
-        # Make select button
-        self.select_button = ctk.CTkButton(
-            parent,
-            text="Seleccionar imagen",
-            command=self.on_select,
-        )
-        self.select_button.pack(fill="x", padx=12, pady=(0, 8))
-
-        self.update()
-
-    def update(self):
-        # Ensure canvas has real size
-        self.canvas.update_idletasks()
-
-        canvas_width = self.canvas.winfo_width()
-        canvas_height = self.canvas.winfo_height()
-
-        # Fallback before layout is ready
-        if canvas_width <= 1 or canvas_height <= 1:
-            canvas_width = self.width
-            canvas_height = self.height
-
-        MARGIN = 16
-
-        preview_width = canvas_width - 2 * MARGIN
-        preview_height = canvas_height - 2 * MARGIN
-
-        image = render_image_asset(
-            self.image_asset,
-            self.render_resources,
-            preview_width,
-            preview_height,
-        )
-
-        # Clear canvas
-        self.canvas.delete("all")
-
-        if self.image_asset.path is None:
-            self.canvas.create_text(
-                canvas_width // 2,
-                canvas_height // 2,
-                text="Sin imagen seleccionada",
-                fill="#aaaaaa",
-                font=ctk.CTkFont(size=22),
-                anchor="center",
-            )
-            return
-
-        # Draw image centered using real canvas size
-        self.canvas_image = ImageTk.PhotoImage(image)
-
-        x = canvas_width // 2
-        y = canvas_height // 2
-
-        # Store image bounds
-        self.image_left = x - image.width // 2
-        self.image_top = y - image.height // 2
-
-        self.image_right = self.image_left + image.width
-        self.image_bottom = self.image_top + image.height
-
-        self.canvas.create_image(
-            x,
-            y,
-            image=self.canvas_image,
-            anchor="center",
-        )
-
-    def clamp_to_image(self, x, y):
-        x = max(self.image_left, min(x, self.image_right))
-        y = max(self.image_top, min(y, self.image_bottom))
-
-        return x, y
-
-    def on_select(self):
-        image_path = filedialog.askopenfilename(
-            title="Seleccionar imagen",
-            filetypes=[
-                ("Imágenes", "*.png *.jpg *.jpeg *.webp"),
-                ("Todos los archivos", "*.*"),
-            ],
-        )
-
-        if not image_path:
-            return
-
-        self.canvas.configure(cursor="crosshair")
-
-        self.image_asset.path = image_path
-        self.update()
-
-    def winfo_children(self):
-        return [self.frame, self.canvas, self.select_button]
-
-    def on_crop_start(self, event):
-        if self.image_asset.path is None:
-            self.on_select()
-            return
-
-        # Start crop
-        self.crop_start_x = event.x
-        self.crop_start_y = event.y
-
-        # Reset previous rectangle
-        if self.selection_rectangle is not None:
-            self.canvas.delete(self.selection_rectangle)
-
-        # Create new rectangle
-        self.selection_rectangle = self.canvas.create_rectangle(
-            event.x,
-            event.y,
-            event.x,
-            event.y,
-            outline="red",
-            width=2,
-        )
-
-    def on_crop_drag(self, event):
-        if self.selection_rectangle is None:
-            return
-
-        self.canvas.coords(
-            self.selection_rectangle,
-            self.crop_start_x,
-            self.crop_start_y,
-            event.x,
-            event.y,
-        )
-
-    def on_crop_end(self, event):
-        if self.selection_rectangle is None:
-            return
-
-        # Clamp start/end to image
-        start_x, start_y = self.clamp_to_image(
-            self.crop_start_x,
-            self.crop_start_y,
-        )
-
-        end_x, end_y = self.clamp_to_image(
-            event.x,
-            event.y,
-        )
-
-        # Convert to image coordinates
-        start_x -= self.image_left
-        start_y -= self.image_top
-
-        end_x -= self.image_left
-        end_y -= self.image_top
-
-        # Normalize
-        image_width = self.image_right - self.image_left
-        image_height = self.image_bottom - self.image_top
-
-        self.image_asset.crop_left = min(start_x, end_x) / image_width
-        self.image_asset.crop_top = min(start_y, end_y) / image_height
-
-        self.image_asset.crop_right = max(start_x, end_x) / image_width
-        self.image_asset.crop_bottom = max(start_y, end_y) / image_height
-
-        self.update()
-        self.on_change()
-
-
 class App:
     def __init__(self, root):
         self.root = root
@@ -262,7 +45,8 @@ class App:
         self.root.geometry("1200x800")
 
         self.model = CalendarModel()
-        self.render_resources = RenderResources()
+        self.resources = ResourcesLoader()
+        self.renderer = CalendarRenderer(self.model, self.resources)
         self.day_collab_rows = {}
         self.preview_canvas_image = None
         self.rendered_preview_image = None
@@ -270,6 +54,7 @@ class App:
         self.platform_ctk_images = {}
         self.platform_icon_labels = {}
         self.widget_visual_defaults = {}
+        self.render_generation = 0
 
         self.create_layout()
 
@@ -376,6 +161,46 @@ class App:
         padx=12,
         pady=(0, 12),
     ):
+        # Delete next word
+        def del_next_word(event):
+            entry = event.widget
+
+            cursor = entry.index("insert")
+            text = entry.get()
+
+            # Skip spaces
+            end = cursor
+            while end < len(text) and text[end].isspace():
+                end += 1
+
+            # Skip word
+            while end < len(text) and not text[end].isspace():
+                end += 1
+
+            entry.delete(cursor, end)
+
+            return "break"
+
+            # Delete previous word
+        def del_prev_word(event):
+            entry = event.widget
+
+            cursor = entry.index("insert")
+            text = entry.get()
+
+            start = cursor
+
+            # Skip spaces
+            while start > 0 and text[start - 1].isspace():
+                start -= 1
+
+            # Skip word
+            while start > 0 and not text[start - 1].isspace():
+                start -= 1
+
+            entry.delete(start, cursor)
+
+            return "break"
         # Make row
         row = ctk.CTkFrame(parent, fg_color="transparent")
         row.pack(fill="x", padx=padx, pady=pady)
@@ -395,6 +220,15 @@ class App:
             textvariable=variable,
         )
         entry.pack(side="left", fill="x", expand=True, padx=(8, 0))
+
+        entry.bind(
+            "<Control-Delete>",
+            del_next_word,
+        )
+        entry.bind(
+            "<Control-BackSpace>",
+            del_prev_word,
+        )
 
         return row, label, entry
 
@@ -430,10 +264,10 @@ class App:
         self.labeled_row(header_section, "Artista", self.fanart_artist_var)
 
         # Make fanart preview
-        ImagePreview(header_section, self.model.fanart, self.render_resources, self.on_model_changed)
+        ThumbnailPreview(header_section, self.model.fanart, self.resources, self.on_model_changed)
 
     def make_day_section(self, parent, day: WeekDay):
-        day_schedule = self.get_day_schedule(day)
+        day_model = self.model.days[day]
 
         # Make day section frame
         day_section = ctk.CTkFrame(parent)
@@ -442,35 +276,35 @@ class App:
         disable_list = []
 
         # Make day title
-        self.make_day_title(day_section, day_schedule)
+        self.make_day_title(day_section, day_model)
 
         # Make rest day checkbox
-        self.make_rest_day_checkbox(day_section, day_schedule, disable_list)
+        self.make_rest_day_checkbox(day_section, day_model, disable_list)
 
         # Make day image selector
-        image = ImagePreview(day_section, day_schedule.image, self.render_resources, self.on_model_changed)
+        image = ThumbnailPreview(day_section, day_model.image, self.resources, self.on_model_changed)
         disable_list.append(image)
 
         # Make stream title row
-        self.make_stream_title_row(day_section, day_schedule, disable_list)
+        self.make_stream_title_row(day_section, day_model, disable_list)
 
         # Make collab row
-        self.make_collab_row(day_section, day_schedule, disable_list)
+        self.make_collab_row(day_section, day_model, disable_list)
 
         # Make subtitle row
-        self.make_subtitle_row(day_section, day_schedule, disable_list)
+        self.make_subtitle_row(day_section, day_model, disable_list)
 
         # Make time row
-        self.make_time_row(day_section, day_schedule, disable_list)
+        self.make_time_row(day_section, day_model, disable_list)
 
         # Make platform selector
-        self.make_platform_selector(day_section, day_schedule, disable_list)
+        self.make_platform_selector(day_section, day_model, disable_list)
 
-    def make_day_title(self, parent, day_schedule: DaySchedule):
+    def make_day_title(self, parent, day_model: DayModel):
         # Make day title label
         day_title = ctk.CTkLabel(
             parent,
-            text=day_schedule.day.value,
+            text=day_model.day.value,
             font=ctk.CTkFont(size=20, weight="bold"),
             anchor="w",
         )
@@ -483,29 +317,29 @@ class App:
         )
         day_separator.pack(fill="x", padx=12, pady=(0, 12))
 
-    def make_rest_day_checkbox(self, parent, day_schedule: DaySchedule, disable_list):
+    def make_rest_day_checkbox(self, parent, day_model: DayModel, disable_list):
         # Make rest day variable
-        rest_day_var = ctk.BooleanVar(value=day_schedule.is_rest_day)
+        rest_day_var = ctk.BooleanVar(value=day_model.is_rest_day)
 
         # Make rest day checkbox
         rest_day_checkbox = ctk.CTkCheckBox(
             parent,
             text="Descanso",
             variable=rest_day_var,
-            command=lambda: self.update_rest(day_schedule, rest_day_var, disable_list),
+            command=lambda: self.update_rest(day_model, rest_day_var, disable_list),
         )
         rest_day_checkbox.pack(anchor="w", padx=12, pady=(0, 12))
 
-    def make_stream_title_row(self, parent, day_schedule: DaySchedule, disable_list):
-        def update_title(day_schedule: DaySchedule, stream_title_var):
-            day_schedule.title = stream_title_var.get()
+    def make_stream_title_row(self, parent, day_model: DayModel, disable_list):
+        def update_title(day_model: DayModel, stream_title_var):
+            day_model.title = stream_title_var.get()
             self.on_model_changed()
 
         # Make stream title variable
-        stream_title_var = ctk.StringVar(value=day_schedule.title)
+        stream_title_var = ctk.StringVar(value=day_model.title)
         stream_title_var.trace_add(
             "write",
-            lambda *_: update_title(day_schedule, stream_title_var),
+            lambda *_: update_title(day_model, stream_title_var),
         )
 
         # Make stream title row
@@ -517,16 +351,16 @@ class App:
 
         disable_list.append(stream_title_row)
 
-    def make_subtitle_row(self, parent, day_schedule: DaySchedule, disable_list):
-        def update_subtitle(day_schedule: DaySchedule, stream_subtitle_var):
-            day_schedule.subtitle = stream_subtitle_var.get()
+    def make_subtitle_row(self, parent, day_model: DayModel, disable_list):
+        def update_subtitle(day_model: DayModel, stream_subtitle_var):
+            day_model.subtitle = stream_subtitle_var.get()
             self.on_model_changed()
 
         # Make stream subtitle variable
-        stream_subtitle_var = ctk.StringVar(value=day_schedule.subtitle)
+        stream_subtitle_var = ctk.StringVar(value=day_model.subtitle)
         stream_subtitle_var.trace_add(
             "write",
-            lambda *_: update_subtitle(day_schedule, stream_subtitle_var),
+            lambda *_: update_subtitle(day_model, stream_subtitle_var),
         )
 
         # Make stream subtitle row
@@ -538,7 +372,7 @@ class App:
 
         disable_list.append(stream_subtitle_row)
 
-    def make_collab_row(self, parent, day_schedule: DaySchedule, disable_list):
+    def make_collab_row(self, parent, day_model: DayModel, disable_list):
         # Make collab section frame
         collab_section = ctk.CTkFrame(parent, fg_color="transparent")
         collab_section.pack(fill="x", padx=12, pady=(0, 12))
@@ -561,7 +395,7 @@ class App:
             collab_header_row,
             text="+",
             width=36,
-            command=lambda: self.add_collab_member_row(day_schedule, collab_list),
+            command=lambda: self.add_collab_member_row(day_model, collab_list),
         )
         add_collab_button.pack(side="right")
 
@@ -573,15 +407,15 @@ class App:
         )
         collab_list.pack(fill="x")
         collab_list.pack_propagate(False)
-        self.day_collab_rows[day_schedule.day] = []
+        self.day_collab_rows[day_model.day] = []
 
         # Add existing collab members
-        for collab_member in day_schedule.collab_members:
-            self.add_collab_member_row(day_schedule, collab_list, collab_member)
+        for collab_member in day_model.collab_members:
+            self.add_collab_member_row(day_model, collab_list, collab_member)
 
     def add_collab_member_row(
         self,
-        day_schedule: DaySchedule,
+        day_model: DayModel,
         parent,
         collab_member: CollabMember | None = None,
     ):
@@ -613,7 +447,7 @@ class App:
             fg_color=collab_member.color,
             hover_color=collab_member.color,
             command=lambda: self.on_select_collab_color(
-                day_schedule,
+                day_model,
                 color_button,
                 collab_member_row,
             ),
@@ -625,16 +459,16 @@ class App:
             collab_member_row,
             text="-",
             width=36,
-            command=lambda: self.remove_collab_member_row(day_schedule, collab_member_row),
+            command=lambda: self.remove_collab_member_row(day_model, collab_member_row),
         )
         remove_button.pack(side="left")
 
         name_var.trace_add(
             "write",
-            lambda *_: self.update_collab(day_schedule),
+            lambda *_: self.update_collab(day_model),
         )
 
-        self.day_collab_rows[day_schedule.day].append(
+        self.day_collab_rows[day_model.day].append(
             {
                 "row": collab_member_row,
                 "name_var": name_var,
@@ -642,23 +476,23 @@ class App:
             }
         )
 
-        self.update_collab(day_schedule)
+        self.update_collab(day_model)
 
-    def remove_collab_member_row(self, day_schedule: DaySchedule, collab_member_row):
-        rows = self.day_collab_rows[day_schedule.day]
-        self.day_collab_rows[day_schedule.day] = [
+    def remove_collab_member_row(self, day_model: DayModel, collab_member_row):
+        rows = self.day_collab_rows[day_model.day]
+        self.day_collab_rows[day_model.day] = [
             row_data for row_data in rows if row_data["row"] != collab_member_row
         ]
 
         collab_member_row.destroy()
 
-        if not self.day_collab_rows[day_schedule.day]:
+        if not self.day_collab_rows[day_model.day]:
             collab_member_row.master.configure(height=0)
             collab_member_row.master.pack_propagate(False)
 
-        self.update_collab(day_schedule)
+        self.update_collab(day_model)
 
-    def on_select_collab_color(self, day_schedule: DaySchedule, color_button, collab_member_row):
+    def on_select_collab_color(self, day_model: DayModel, color_button, collab_member_row):
         initial_color = color_button.cget("fg_color")
 
         _, selected_color = colorchooser.askcolor(
@@ -674,20 +508,20 @@ class App:
             hover_color=selected_color,
         )
 
-        for row_data in self.day_collab_rows[day_schedule.day]:
+        for row_data in self.day_collab_rows[day_model.day]:
             if row_data["row"] == collab_member_row:
                 row_data["color"] = selected_color
                 break
 
-        self.update_collab(day_schedule)
+        self.update_collab(day_model)
 
-    def make_time_row(self, parent, day_schedule: DaySchedule, disable_list):
+    def make_time_row(self, parent, day_model: DayModel, disable_list):
         def update_time(time_var):
-            day_schedule.time_text = time_var.get()
+            day_model.time_text = time_var.get()
             self.on_model_changed()
 
         # Make time variable
-        time_var = ctk.StringVar(value=day_schedule.time_text)
+        time_var = ctk.StringVar(value=day_model.time_text)
         time_var.trace_add(
             "write",
             lambda *_: update_time(time_var),
@@ -702,9 +536,9 @@ class App:
 
         disable_list.append(time_row)
 
-    def make_platform_selector(self, parent, day_schedule: DaySchedule, disable_list):
+    def make_platform_selector(self, parent, day_model: DayModel, disable_list):
         # Make platform variable
-        platform_var = ctk.StringVar(value=day_schedule.platform.value)
+        platform_var = ctk.StringVar(value=day_model.platform.value)
 
         # Make platform row
         platform_row = ctk.CTkFrame(parent, fg_color="transparent")
@@ -722,7 +556,7 @@ class App:
             option_frame = ctk.CTkFrame(platform_options, fg_color="transparent")
 
             def update_platform(platform_var):
-                day_schedule.platform = Platform(platform_var.get())
+                day_model.platform = Platform(platform_var.get())
                 self.on_model_changed()
 
             # Make platform radio button
@@ -739,7 +573,7 @@ class App:
             radio_button.pack(side="left")
 
             # Load platform icon
-            icon_image = self.render_resources.load_platform_icon(
+            icon_image = self.resources.load_platform_icon(
                 platform,
                 28,
                 28,
@@ -752,7 +586,7 @@ class App:
                 dark_image=icon_image,
                 size=(28, 28),
             )
-            self.platform_ctk_images[(day_schedule.day, platform)] = icon
+            self.platform_ctk_images[(day_model.day, platform)] = icon
 
             # Make platform icon label
             icon_label = ctk.CTkLabel(
@@ -761,7 +595,7 @@ class App:
                 image=icon,
             )
             icon_label.pack(side="left", padx=(4, 0))
-            self.platform_icon_labels[(day_schedule.day, platform)] = icon_label
+            self.platform_icon_labels[(day_model.day, platform)] = icon_label
 
             return option_frame
 
@@ -785,16 +619,16 @@ class App:
 
         disable_list.append(platform_row)
 
-    def update_rest(self, day_schedule: DaySchedule, rest_day_var, disable_list):
-        day_schedule.is_rest_day = rest_day_var.get()
+    def update_rest(self, day_model: DayModel, rest_day_var, disable_list):
+        day_model.is_rest_day = rest_day_var.get()
 
-        state = "disabled" if day_schedule.is_rest_day else "normal"
+        state = "disabled" if day_model.is_rest_day else "normal"
 
         for widget in disable_list:
             self.configure_widget_tree_state(widget, state)
-            self.configure_widget_tree_visual_state(widget, day_schedule.is_rest_day)
+            self.configure_widget_tree_visual_state(widget, day_model.is_rest_day)
 
-        self.update_platform_icons_visual_state(day_schedule)
+        self.update_platform_icons_visual_state(day_model)
         self.on_model_changed()
 
     def configure_widget_tree_state(self, widget, state: str):
@@ -865,15 +699,15 @@ class App:
         except (AttributeError, ValueError, tk.TclError):
             pass
 
-    def update_platform_icons_visual_state(self, day_schedule: DaySchedule):
+    def update_platform_icons_visual_state(self, day_model: DayModel):
         icon_color = (
             DISABLED_PLATFORM_ICON_COLOR
-            if day_schedule.is_rest_day
+            if day_model.is_rest_day
             else NORMAL_PLATFORM_ICON_COLOR
         )
 
         for platform in (Platform.TWITCH, Platform.YOUTUBE):
-            icon_image = self.render_resources.load_platform_icon(
+            icon_image = self.resources.load_platform_icon(
                 platform,
                 28,
                 28,
@@ -886,21 +720,15 @@ class App:
                 size=(28, 28),
             )
 
-            self.platform_ctk_images[(day_schedule.day, platform, icon_color)] = icon
+            self.platform_ctk_images[(day_model.day, platform, icon_color)] = icon
 
-            icon_label = self.platform_icon_labels[(day_schedule.day, platform)]
+            icon_label = self.platform_icon_labels[(day_model.day, platform)]
             icon_label.configure(image=icon, state="normal")
 
-    def get_day_schedule(self, day: WeekDay) -> DaySchedule:
-        if day not in self.model.days:
-            self.model.days[day] = DaySchedule(day=day)
-
-        return self.model.days[day]
-
-    def update_collab(self, day_schedule: DaySchedule):
+    def update_collab(self, day_model: DayModel):
         collab_members = []
 
-        for row_data in self.day_collab_rows[day_schedule.day]:
+        for row_data in self.day_collab_rows[day_model.day]:
             name = row_data["name_var"].get().strip()
 
             if not name:
@@ -913,17 +741,21 @@ class App:
                 )
             )
 
-        day_schedule.collab_members = collab_members
+        day_model.collab_members = collab_members
         self.on_model_changed()
 
     def on_model_changed(self):
-        self.schedule_preview_update()
+        self.model_preview_update()
 
-    def schedule_preview_update(self):
+    def model_preview_update(self):
         def render_preview():
             self.preview_update_job = None
-            self.rendered_preview_image = render_calendar(self.model, self.render_resources)
-            self.update_preview_canvas()
+            self.render_generation += 1
+            Thread(
+                target=self.render_preview_worker,
+                args=(self.render_generation,),
+                daemon=True,
+            ).start()
 
         if self.preview_update_job is not None:
             self.root.after_cancel(self.preview_update_job)
@@ -932,6 +764,20 @@ class App:
             120,
             render_preview,
         )
+
+    def render_preview_worker(self, generation):
+        image = self.renderer.render()
+
+        self.root.after(
+            0,
+            lambda: self.finish_preview_render(generation, image),
+        )
+
+    def finish_preview_render(self, generation, image):
+        if generation != self.render_generation:
+            return
+        self.rendered_preview_image = image
+        self.update_preview_canvas()
 
     def update_preview_canvas(self):
         # Get canvas size

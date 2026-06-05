@@ -17,21 +17,11 @@ CANVAS_HEIGHT = 1920
 class ResourcesLoader:
     images: dict[Path, Image.Image] = field(default_factory=dict)
     svgs: dict[tuple[Path, int, int, str], Image.Image] = field(default_factory=dict)
-    fonts: dict[int, FreeTypeFont] = field(default_factory=dict)
-
-    def load_font(self, size: int) -> FreeTypeFont:
-        if size not in self.fonts:
-            self.fonts[size] = ImageFont.truetype(
-                RESOURCE_DIR / "Choripan.otf",
-                size=size,
-            )
-
-        return self.fonts[size]
 
     def load_image_or_empty(self, path: str | Path | None) -> Image.Image:
         if path is None:
             return Image.new("RGBA", (1, 1), (0, 0, 0, 0))
-        
+
         return self.load_image(path)
 
     def load_image(self, path: str | Path) -> Image.Image:

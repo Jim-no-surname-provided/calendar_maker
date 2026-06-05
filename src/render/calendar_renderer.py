@@ -1,6 +1,6 @@
 import customtkinter as ctk
 
-from PIL import Image, ImageDraw
+from PIL import Image
 from pathlib import Path
 
 from model import CalendarModel, WeekDay
@@ -14,7 +14,7 @@ class CalendarRenderer:
         self.model = model
         self.resources = resources
         self.write = TextRenderer().render
-        # self.fanart_renderer =
+
         self.day_renderers: dict[WeekDay, DayRenderer] = {
             day: DayRenderer(self.model.days[day], resources)
             for day in WeekDay
@@ -30,72 +30,73 @@ class CalendarRenderer:
             image.alpha_composite(day_img)
 
         return image
-
+    
     # Background
-
     def background(self) -> Image.Image:
         return self.resources.load_image(RESOURCE_DIR / "background.png")
 
-    # Header
+
     def header(self) -> Image.Image:
-        # Load elements
-        fanart_txt_bg, fanart_artist = self.render_fanart_artist()
+        # Load layers
         fanart_frame = self.resources.load_image(RESOURCE_DIR / "frames" / "fanart.png")
 
-        # Make result
-        fanart = Image.new("RGBA", fanart_frame.size, (0, 0, 0, 0))
+        artist_text = self.render_fanart_artist_label()
 
-        # Composite
-        fanart_pos = (938-fanart_txt_bg.width, 180)
-        fanart.alpha_composite(fanart_txt_bg, fanart_pos)
+        artist_bg = self.render_stretched(
+            RESOURCE_DIR / "fanart text background.png",
+            artist_text.width,
+        )
+
+        artist_fg = self.render_stretched(
+            RESOURCE_DIR / "fanart text foreground.png",
+            artist_text.width,
+        )
+
+        # Create result
+        fanart = Image.new(
+            "RGBA",
+            fanart_frame.size,
+            (0, 0, 0, 0),
+        )
+
+        # Composite artist label
+        artist_pos = (938 - artist_bg.width, 180)
+        fanart.alpha_composite(artist_bg, artist_pos)
         fanart.alpha_composite(fanart_frame)
-        fanart.alpha_composite(fanart_artist, fanart_pos)
+        fanart.alpha_composite(artist_text, artist_pos)
+        fanart.alpha_composite(artist_fg, artist_pos,)
 
         # Write date
-        fanart.alpha_composite(self.write(
+        date_text = self.write(
             self.model.date_range,
-            TextStyle(62,
-                      stroke_color="#f5789f",
-                      stroke_width=13)),
-            dest=(15, 45)
+            TextStyle(
+                font_size=62,
+                stroke_color="#f5789f",
+                stroke_width=13,
+            ),
         )
 
-        # TODO
+        fanart.alpha_composite(
+            date_text,
+            dest=(15, 45),
+        )
+
         return fanart
 
-    def render_fanart_artist(self) -> tuple[Image.Image, Image.Image]:
-        font = self.resources.load_font(28)
-
-        # Calculate text size
-        bbox = font.getbbox(
+    def render_fanart_artist_label(
+        self,
+    ) -> Image.Image:
+        # Render artist name
+        artist_text = self.write(
             self.model.fanart_artist,
-            stroke_width=4,
-        )
-
-        width = int(bbox[2] - bbox[0])
-        height = int(bbox[3] - bbox[1])
-
-        # Make background and foreground for that size
-        bg = self.render_stretched(RESOURCE_DIR / "fanart text background.png", width)
-        txt = self.render_stretched(RESOURCE_DIR / "fanart text foreground.png", width)
-
-        # Draw in a draw object
-        draw = ImageDraw.Draw(txt)
-        pad_right = 26
-        pad_bottom = 8
-        draw.text(
-            (
-                bg.width - width - bbox[0] - pad_right,
-                (bg.height - height) // 2 - bbox[1] - pad_bottom,
+            TextStyle(
+                font_size=28,
+                stroke_color="#d57fc2",
+                stroke_width=4,
             ),
-            self.model.fanart_artist,
-            font=font,
-            fill="white",
-            stroke_width=4,
-            stroke_fill="#d57fc2",
         )
 
-        return bg, txt
+        return artist_text
 
     def render_stretched(
         self,

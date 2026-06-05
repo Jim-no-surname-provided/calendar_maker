@@ -26,6 +26,8 @@ pillow==12.2.0
     #   cairosvg
 pycparser==3.0
     # via cffi
+svgwrite==1.4.3
+    # via -r requirements.in
 tinycss2==1.5.1
     # via
     #   cairosvg

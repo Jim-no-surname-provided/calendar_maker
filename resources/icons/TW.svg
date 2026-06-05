@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2400 2800">
+  <path
+    fill="white"
+    fill-rule="evenodd"
+    d="
+      M500 0
+      L0 500
+      V2300
+      H600
+      V2800
+      L1100 2300
+      H1500
+      L2400 1400
+      V0
+      H500
+      Z
+
+      M2200 1300
+      L1800 1700
+      H1400
+      L1050 2050
+      V1700
+      H600
+      V200
+      H2200
+      Z
+    "
+  />
+
+  <rect x="1700" y="550" width="200" height="600" fill="white"/>
+  <rect x="1150" y="550" width="200" height="600" fill="white"/>
+</svg>

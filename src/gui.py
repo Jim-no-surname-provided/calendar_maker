@@ -153,6 +153,48 @@ class App:
         for day in WeekDay:
             self.make_day_section(left_content, day)
 
+    # Delete next word
+    def del_next_word(self, event):
+        entry = event.widget
+
+        cursor = entry.index("insert")
+        text = entry.get()
+
+        # Skip spaces
+        end = cursor
+        while end < len(text) and text[end].isspace():
+            end += 1
+
+        # Skip word
+        while end < len(text) and not text[end].isspace():
+            end += 1
+
+        entry.delete(cursor, end)
+
+        return "break"
+
+        # Delete previous word
+    def del_prev_word(self, event):
+        entry = event.widget
+
+        cursor = entry.index("insert")
+        text = entry.get()
+
+        start = cursor
+
+        # Skip spaces
+        while start > 0 and text[start - 1].isspace():
+            start -= 1
+
+        # Skip word
+        while start > 0 and not text[start - 1].isspace():
+            start -= 1
+
+        entry.delete(start, cursor)
+
+        return "break"
+    
+    
     def labeled_row(
         self,
         parent,
@@ -161,46 +203,6 @@ class App:
         padx=12,
         pady=(0, 12),
     ):
-        # Delete next word
-        def del_next_word(event):
-            entry = event.widget
-
-            cursor = entry.index("insert")
-            text = entry.get()
-
-            # Skip spaces
-            end = cursor
-            while end < len(text) and text[end].isspace():
-                end += 1
-
-            # Skip word
-            while end < len(text) and not text[end].isspace():
-                end += 1
-
-            entry.delete(cursor, end)
-
-            return "break"
-
-            # Delete previous word
-        def del_prev_word(event):
-            entry = event.widget
-
-            cursor = entry.index("insert")
-            text = entry.get()
-
-            start = cursor
-
-            # Skip spaces
-            while start > 0 and text[start - 1].isspace():
-                start -= 1
-
-            # Skip word
-            while start > 0 and not text[start - 1].isspace():
-                start -= 1
-
-            entry.delete(start, cursor)
-
-            return "break"
         # Make row
         row = ctk.CTkFrame(parent, fg_color="transparent")
         row.pack(fill="x", padx=padx, pady=pady)
@@ -223,11 +225,11 @@ class App:
 
         entry.bind(
             "<Control-Delete>",
-            del_next_word,
+            self.del_next_word,
         )
         entry.bind(
             "<Control-BackSpace>",
-            del_prev_word,
+            self.del_prev_word,
         )
 
         return row, label, entry
@@ -282,7 +284,7 @@ class App:
         self.make_rest_day_checkbox(day_section, day_model, disable_list)
 
         # Make day image selector
-        image = ThumbnailPreview(day_section, day_model.image, self.resources, self.on_model_changed)
+        image = ThumbnailPreview(day_section, day_model.thumbnail, self.resources, self.on_model_changed)
         disable_list.append(image)
 
         # Make stream title row
@@ -437,6 +439,14 @@ class App:
             textvariable=name_var,
             placeholder_text="Nombre",
         )
+        collab_member_entry.bind(
+            "<Control-Delete>",
+            self.del_next_word,
+        )
+        collab_member_entry.bind(
+            "<Control-BackSpace>",
+            self.del_prev_word,
+        )
         collab_member_entry.pack(side="left", fill="x", expand=True)
 
         # Make collab color button
@@ -576,7 +586,6 @@ class App:
             icon_image = self.resources.load_platform_icon(
                 platform,
                 28,
-                28,
                 NORMAL_PLATFORM_ICON_COLOR,
             )
 
@@ -709,7 +718,6 @@ class App:
         for platform in (Platform.TWITCH, Platform.YOUTUBE):
             icon_image = self.resources.load_platform_icon(
                 platform,
-                28,
                 28,
                 icon_color,
             )

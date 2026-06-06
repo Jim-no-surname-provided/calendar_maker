@@ -1,18 +1,16 @@
 from dataclasses import dataclass
 from pathlib import Path
 from PIL import Image
-import svgwrite
-import cairosvg
+from svgwrite import Drawing
+import resvg_py
 from io import BytesIO
-
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-RESOURCE_DIR = PROJECT_ROOT / "resources"
+from model import RESOURCE_DIR
 
 
 @dataclass
 class TextStyle:
-    height: int
-    font_family: str = "Choripan"
+    font_size: int
+    font_path: str | Path = RESOURCE_DIR / "Choripan.otf"
     fill_color: str = "#FFFFFF"
 
     stroke_color: str | None = None
@@ -30,44 +28,69 @@ class TextStyle:
 
 class TextRenderer:
     def render(self, text: str, style: TextStyle) -> Image.Image:
-        return self.svg2img(self.str2svg(text, style), style.height)
+        if text == "":
+            return Image.new("RGBA", (1, 1), (0, 0, 0, 0))
 
-    # def svg2img(self, svg_xml: str) -> Image.Image:
-    #     png_bytes = cairosvg.svg2png(bytestring=svg_xml.encode("utf-8"))
-    #     if png_bytes is None:
-    #         return Image.new("RGBA", (1, 1), (0, 0, 0, 0))
+        return self.svg2img(self.str2svg(text, style), style)
 
-    #     image = Image.open(BytesIO(png_bytes)).convert("RGBA")
-    #     return image
-
-    def str2svg(self, text: str, style: TextStyle) -> str:
+    def str2svg(self, text: str, style: TextStyle) -> Drawing:
         if style.upper_case:
             text = text.upper()
 
-        dwg = svgwrite.Drawing()
+        font_family: str = Path(style.font_path).stem
+        dwg = Drawing()
+
+        # Draw stroke behind the fill
+        if style.stroke_color is not None and style.stroke_width > 0:
+            dwg.add(
+                dwg.text(
+                    text,
+                    insert=(style.stroke_width, style.font_size),
+                    fill="none",
+                    stroke=style.stroke_color,
+                    stroke_width=style.stroke_width,
+                    font_size=style.font_size,
+                    font_family=font_family,
+                )
+            )
+
+        # # Draw fill on top
         dwg.add(
             dwg.text(
                 text,
-                insert=(20, 100),
+                insert=(style.stroke_width, style.font_size),
                 fill=style.fill_color,
-                # Cannonical size, mostly irrelevant
-                font_size=100,
-                font_family="Choripan",
+                font_size=style.font_size,
+                font_family=font_family,
             )
         )
-        svg_xml = dwg.tostring()
-        return svg_xml
 
-    def svg2img(self, svg_xml: str, height: int) -> Image.Image:
-        # Rasterize SVG at the requested height
-        png_bytes = cairosvg.svg2png(
-            bytestring=svg_xml.encode("utf-8"),
-            output_height=height,
+        return dwg
+
+    def svg2img(self, svg: Drawing, style: TextStyle) -> Image.Image:
+        # Rasterize SVG
+        png_bytes = resvg_py.svg_to_bytes(
+            svg_string=svg.tostring(),
+            font_files=[str(style.font_path)]
         )
 
         # If None, empty
         if png_bytes is None:
-            return Image.new("RGBA",(1, 1),(0, 0, 0, 0))
+            return Image.new("RGBA", (1, 1), (0, 0, 0, 0))
+
+        img = Image.open(BytesIO(png_bytes)).convert("RGBA")
+
+        # Define new size
+        width = img.width + style.stroke_width
+        height = img.height
+        svg.viewbox(width=width, height=height)
+
+        # Render with the correct size
+        png_bytes = resvg_py.svg_to_bytes(
+            svg_string=svg.tostring(),
+            font_files=[str(style.font_path)]
+        )
 
         # Convert PNG bytes to Pillow image
-        return Image.open(BytesIO(png_bytes)).convert("RGBA")
+        img = Image.open(BytesIO(png_bytes)).convert("RGBA")
+        return img.crop(img.getbbox())

@@ -154,6 +154,7 @@ class ThumbnailPreview:
 
         self.model.path = image_path
         self.update()
+        self.on_change()
 
     def winfo_children(self):
         return [self.frame, self.canvas, self.select_button]

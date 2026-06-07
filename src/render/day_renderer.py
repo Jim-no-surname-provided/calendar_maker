@@ -1,5 +1,5 @@
 import textwrap
-from PIL import Image
+from PIL import Image, ImageDraw, ImageChops
 from model import DayModel
 from pathlib import Path
 from render.thumbnail_renderer import ThumbnailRenderer
@@ -15,44 +15,52 @@ from render.resources_loader import RESOURCE_DIR
 class DayStyle:
     frame_path: Path
     mask_path: str
-    text_color: str
+    color1: str
+    color2: str
 
 
 DAY_STYLES = {
     WeekDay.MONDAY: DayStyle(
         frame_path=RESOURCE_DIR / "frames/monday.png",
         mask_path="masks/monday.png",
-        text_color="#b96cae",
+        color1="#b96cae",
+        color2="#ffa7c4",
     ),
     WeekDay.TUESDAY: DayStyle(
         frame_path=RESOURCE_DIR / "frames/tuesday.png",
         mask_path="masks/tuesday.png",
-        text_color="#705ba6",
+        color1="#705ba6",
+        color2="#bca7ff",
     ),
     WeekDay.WEDNESDAY: DayStyle(
         frame_path=RESOURCE_DIR / "frames/wednesday.png",
         mask_path="masks/wednesday.png",
-        text_color="#6565b7",
+        color1="#6565b7",
+        color2="#a7afff",
     ),
     WeekDay.THURSDAY: DayStyle(
         frame_path=RESOURCE_DIR / "frames/thursday.png",
         mask_path="masks/thursday.png",
-        text_color="#b96cae",
+        color1="#b96cae",
+        color2="#ffa7c4",
     ),
     WeekDay.FRIDAY: DayStyle(
         frame_path=RESOURCE_DIR / "frames/friday.png",
         mask_path="masks/friday.png",
-        text_color="#705ba6",
+        color1="#705ba6",
+        color2="#c5a7ff",
     ),
     WeekDay.SATURDAY: DayStyle(
         frame_path=RESOURCE_DIR / "frames/saturday.png",
         mask_path="masks/saturday.png",
-        text_color="#6565b7",
+        color1="#6565b7",
+        color2="#a7b1ff",
     ),
     WeekDay.SUNDAY: DayStyle(
         frame_path=RESOURCE_DIR / "frames/sunday.png",
         mask_path="masks/sunday.png",
-        text_color="#b96cae",
+        color1="#b96cae",
+        color2="#ffa7c4",
     ),
 }
 
@@ -68,7 +76,9 @@ class DayRenderer:
         style = DAY_STYLES[self.model.day]
         result = self.render_frame(style.frame_path)
         mask = self.resources.load_image(self.model.thumbnail.mask_path)
-        mask_center = self.get_center(mask)
+
+        if self.model.is_rest_day:
+            return self.rest_day(style, result, mask)
 
         #  Add thumbnail
         result.alpha_composite(self.thumbnail_renderer.render_masked())
@@ -79,18 +89,118 @@ class DayRenderer:
         collabs = self.collabs()
         if collabs is not None:
             texts.append(collabs)
-        # TODO other texts
+
+        subtitle = self.render_subtitle()
+        if subtitle is not None:
+            texts.append(subtitle)
+
+        time = self.render_time()
+        if time is not None:
+            texts.append(time)
 
         if len(texts) == 0:
             return result
 
-        texts[0].save("test.png")
-        packed_texts = self.pack_imgs(texts, spacing=-8)
-        center = self.get_center(packed_texts)
+        # Render texts on top of each other
+        packed_texts = self.resources.pack_imgs(texts, spacing=-4)
+        packed_pos = self.resources.offset_to_center(packed_texts, mask)
 
-        result.alpha_composite(packed_texts, self.minus(mask_center, center))
+        # Render icon
+        icon = self.render_platform_icon()
+        icon_center = self.resources.get_center(icon)
+        # image top left Corner-> middle -> first text top left corner
+        icon_pos = (
+            packed_pos[0] + packed_texts.width//2 - texts[0].width//2 - icon_center[0] - 8,
+            packed_pos[1] - icon_center[1] + 8)
+
+        # Compose icon first, then text
+        result.alpha_composite(icon, icon_pos)
+        result.alpha_composite(packed_texts, packed_pos)
 
         return result
+
+    def rest_day(self, day_style: DayStyle, frame: Image.Image, mask: Image.Image) -> Image.Image:
+        # Add white background
+        frame.alpha_composite(mask)
+
+        # make gray overlay
+        overlay = Image.new(
+            "RGBA",
+            frame.size,
+            (64, 0, 48, 143),
+        )
+        overlay = ImageChops.multiply(overlay, frame)
+        frame.alpha_composite(overlay)
+
+        txt = self.write(
+            "descanso",
+            TextStyle(
+                font_size=100,
+                stroke_width=24,
+                stroke_color=day_style.color1,
+                glow_color=day_style.color1,
+                glow_radius=32,
+            )
+        )
+
+        txt.save("test.png")
+
+        frame.alpha_composite(txt, self.resources.offset_to_center(txt, mask))
+
+        return frame
+
+    def render_time(self) -> Image.Image | None:
+        txt = self.model.time_text
+        if txt == "":
+            return
+
+        color = DAY_STYLES[self.model.day].color1
+        style = TextStyle(
+            font_size=24,
+            fill_color="#FFFFFF",
+            stroke_color=color,
+            stroke_width=8
+        )
+        img = self.write(txt, style)
+
+        img = self.center_in_rounded_box(img, border_color=color)
+
+        return img
+
+    def render_platform_icon(self) -> Image.Image:
+        # Load platform icon
+        icon_size = 64
+
+        icon = self.resources.load_platform_icon(
+            self.model.platform,
+            color="#FFFFFF",
+            max_height=icon_size,
+            max_width=icon_size,
+            circle_fill_color=DAY_STYLES[self.model.day].color2,
+            circle_stroke_color=DAY_STYLES[self.model.day].color1,
+            circle_stroke_width=12
+        )
+
+        # Rotate final icon badge
+        return icon.rotate(
+            30,
+            expand=True,
+            resample=Image.Resampling.BICUBIC,
+        )
+
+    def render_subtitle(self) -> Image.Image | None:
+        if self.model.subtitle == "":
+            return
+
+        # Make subtitle
+        title_style = TextStyle(
+            font_size=32,
+            stroke_color="#FFFFFF",
+            fill_color=DAY_STYLES[self.model.day].color2,
+            stroke_width=12,
+        )
+
+        return self.write(self.model.subtitle, title_style)
 
     def collabs(self) -> Image.Image | None:
         members = self.model.collab_members
@@ -109,41 +219,13 @@ class DayRenderer:
             img = self.write(
                 txt, TextStyle(
                     fill_color=m.color,
-                    font_size=48,
+                    font_size=32,
                     stroke_width=12,
                     stroke_color="#FFFFFF"
                 ))
             imgs.append(img)
 
-        return self.concat_imgs(imgs, spacing=8)
-
-    def concat_imgs(self, imgs: list[Image.Image], spacing: int = 0) -> Image.Image:
-        width = sum(img.width + spacing for img in imgs) - spacing
-        height = max(img.height for img in imgs)
-
-        result = Image.new("RGBA", (width, height))
-
-        # Paste each one under the other
-        current_x = 0
-        for img in imgs:
-            result.alpha_composite(img, (current_x, height//2 - img.height//2))
-            current_x += img.width + spacing
-
-        return result
-
-    def pack_imgs(self, imgs: list[Image.Image], spacing: int = 0) -> Image.Image:
-        height = sum(img.height + spacing for img in imgs) - spacing
-        width = max(img.width for img in imgs)
-
-        result = Image.new("RGBA", (width, height))
-
-        # Paste each one under the other
-        current_y = 0
-        for img in imgs:
-            result.alpha_composite(img, (width//2 - img.width//2, current_y))
-            current_y += img.height + spacing
-
-        return result
+        return self.resources.concat_imgs(imgs, spacing=2)
 
     def render_title(self) -> list[Image.Image]:
         result = []
@@ -154,7 +236,7 @@ class DayRenderer:
         # Make title
         title_style = TextStyle(
             font_size=80,
-            stroke_color=DAY_STYLES[self.model.day].text_color,
+            stroke_color=DAY_STYLES[self.model.day].color1,
             stroke_width=16,
         )
 
@@ -206,21 +288,35 @@ class DayRenderer:
 
         return best_lines
 
-    def minus(self, tuple1: tuple[int, int], tuple2: tuple[int, int]) -> tuple[int, int]:
-        return (tuple1[0]-tuple2[0], tuple1[1]-tuple2[1])
+    def center_in_rounded_box(
+        self,
+        img: Image.Image,
+        padding: int = 16,
+        corner_radius: int = 24,
+        border_color: str | tuple[int, int, int, int] = "#FFFFFF",
+        border_width: int = 8,
+        background_color: str | tuple[int, int, int, int] = (0, 0, 0, 0),
+    ) -> Image.Image:
+        # Make result canvas
+        width = img.width + 2 * padding
+        height = img.height + 2 * padding
+        result = Image.new("RGBA", (width, height), background_color)
 
-    def get_center(self, img: Image.Image) -> tuple[int, int]:
-        bbox = img.getbbox()
-        if bbox is None:
-            return 0, 0
-
-        left, top, right, bottom = bbox
-
-        return (
-            (left + right) // 2,
-            (top + bottom) // 2,
+        # Draw rounded border only
+        draw = ImageDraw.Draw(result)
+        draw.rounded_rectangle(
+            (0, 0, width - 1, height - 1),
+            radius=corner_radius,
+            outline=border_color,
+            width=border_width,
         )
 
-    # Frame
+        # Center image inside border
+        x = (width - img.width) // 2
+        y = (height - img.height) // 2
+        result.alpha_composite(img, (x, y))
+
+        return result
+
     def render_frame(self, frame_path: Path) -> Image.Image:
         return Image.open(frame_path).convert("RGBA")

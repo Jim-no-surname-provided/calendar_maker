@@ -23,15 +23,15 @@ class Platform(Enum):
 
 @dataclass
 class CollabMember:
-    name: str = "JimberrDev"
-    color: str = "#d9af18"
+    name: str = ""
+    color: str = ""
 
 
 @dataclass
 class ThumbnailModel:
     mask_path: str | Path
     path: str | Path | None = None
-    opacity: float = 8.0
+    opacity: float = 0.8
     crop_left: float = 0.0
     crop_top: float = 0.0
     crop_right: float = 1.0

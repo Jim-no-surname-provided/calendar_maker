@@ -92,7 +92,7 @@ class ThumbnailRenderer():
         mask_box = mask.getbbox()
 
         if mask_box is None:
-            return Image.new("RGBA", mask.size, (0, 0, 0, 0))
+            return Image.new("RGBA", mask.size)
 
         mask_left, mask_top, mask_right, mask_bottom = mask_box
         mask_width = mask_right - mask_left
@@ -110,23 +110,14 @@ class ThumbnailRenderer():
         img_y = mask_top + (mask_height - img.height) // 2
 
         # Place image in full-size transparent result
-        result = Image.new("RGBA", mask.size, (0, 0, 0, 0))
+        result = Image.new("RGBA", mask.size)
 
-        result.alpha_composite(
-            img,
-            (img_x, img_y),
-        )
+        result.alpha_composite(img, (img_x, img_y))
 
-        # Multiply image alpha by mask alpha
-        image_alpha = result.getchannel("A")
-        mask_alpha = mask.getchannel("A")
+        # Multiply with mask to mask it
+        result = ImageChops.multiply(result, mask)
 
-        combined_alpha = ImageChops.multiply(
-            image_alpha,
-            mask_alpha,
-        )
-
-
-        result.putalpha(combined_alpha)
+        # Multiply with opacity
+        result = ImageChops.multiply(result, Image.new("RGBA", result.size, (255, 255, 255, int(self.model.opacity*255))))
 
         return result

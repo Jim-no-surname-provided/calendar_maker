@@ -4,7 +4,7 @@ from PIL import Image
 from pathlib import Path
 
 from model import CalendarModel, WeekDay
-from render.resources_loader import ResourcesLoader, RESOURCE_DIR
+from render.resources_loader import ResourcesLoader, RESOURCE_DIR, Platform
 from render.day_renderer import DayRenderer
 from render.thumbnail_renderer import ThumbnailRenderer
 from render.text_renderer import TextRenderer, TextStyle
@@ -32,9 +32,46 @@ class CalendarRenderer:
             if day_img is not None:
                 image.alpha_composite(day_img)
 
+        footer = self.footer()
+        y_margin = 30
+        x = image.width//2 - footer.width//2
+        y = image.height-footer.height - y_margin
+        image.alpha_composite(footer, (x, y))
+
         return image
 
-    # Background
+    def footer(self) -> Image.Image:
+        icon_size = 48
+        style = TextStyle(
+            font_size=58,
+            stroke_color="#f5789f",
+            stroke_width=16,
+        )
+
+        tw = self.resources.load_platform_icon(
+            Platform.TWITCH,
+            color="#a7afff",
+            max_height=icon_size,
+            max_width=icon_size,
+            circle_fill_color="#FFFFFF",
+            circle_padding=10,
+        )
+
+        tw_txt = self.write("twitch.tv/pinklingvt", style)
+
+        yt = self.resources.load_platform_icon(
+            Platform.YOUTUBE,
+            color="#f5789f",
+            max_height=icon_size,
+            max_width=icon_size,
+            circle_fill_color="#FFFFFF",
+            circle_padding=10,
+        )
+
+        yt_txt = self.write("youtube.com/@pinklingvt", style)
+
+        return self.resources.concat_imgs([tw, tw_txt, yt, yt_txt], spacing=16)
+
     def background(self) -> Image.Image:
         return self.resources.load_image(RESOURCE_DIR / "background.png")
 
@@ -65,7 +102,6 @@ class CalendarRenderer:
         fanart = Image.new(
             "RGBA",
             fanart_frame.size,
-            (0, 0, 0, 0),
         )
 
         # Composite artist label
@@ -94,7 +130,6 @@ class CalendarRenderer:
             dest=(15, 45),
         )
 
-
         return fanart
 
     def render_stretched(
@@ -118,7 +153,6 @@ class CalendarRenderer:
         result = Image.new(
             "RGBA",
             (img.width + stretched_width, img.height),
-            (0, 0, 0, 0),
         )
 
         # Paste fixed part

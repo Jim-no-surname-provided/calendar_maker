@@ -1,8 +1,19 @@
 from dataclasses import dataclass, field
 from pathlib import Path
 from enum import Enum
+import sys
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+def app_root() -> Path:
+    # PyInstaller bundle path
+    if getattr(sys, "frozen", False):
+        return Path(sys._MEIPASS) # type: ignore
+
+    # Normal development path
+    return Path(__file__).resolve().parent.parent
+
+
+PROJECT_ROOT = app_root()
 RESOURCE_DIR = PROJECT_ROOT / "resources"
 
 

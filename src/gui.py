@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import colorchooser
+from tkinter import colorchooser, filedialog, messagebox
 
 import customtkinter as ctk
 from PIL import ImageTk
@@ -41,7 +41,7 @@ REST_RADIO_STYLE = {
 class App:
     def __init__(self, root):
         self.root = root
-        self.root.title("Editor de Calendario VTuber")
+        self.root.title("Creador de calendarios")
         self.root.geometry("1200x800")
 
         self.model = CalendarModel()
@@ -56,6 +56,9 @@ class App:
         self.widget_visual_defaults = {}
         self.render_generation = 0
 
+        self.render_thread_running = False
+        self.render_pending = False
+
         self.create_layout()
 
     def create_layout(self):
@@ -64,7 +67,6 @@ class App:
         self.root.grid_rowconfigure(0, weight=0)
         self.root.grid_rowconfigure(1, weight=1)
 
-        # Make top bar
         self.make_top_bar()
 
         # Make resizable main area
@@ -78,9 +80,7 @@ class App:
         )
         main_area.grid(row=1, column=0, sticky="nsew")
 
-        # Make left panel
         self.make_left_panel(main_area)
-        # Make preview frame
         self.make_preview_frame(main_area)
 
     def make_preview_frame(self, main_area):
@@ -115,21 +115,36 @@ class App:
         top_bar.grid(row=0, column=0, sticky="ew")
         top_bar.grid_propagate(False)
 
-        # Make file button
+        # Make save button
         file_button = ctk.CTkButton(
             top_bar,
-            text="Archivo",
-            width=90,
+            text="Guardar png",
+            width=130,
+            command=self.save_calendar_png,
         )
         file_button.pack(side="left", padx=(12, 6), pady=8)
 
-        # Make edit button
-        edit_button = ctk.CTkButton(
-            top_bar,
-            text="Editar",
-            width=90,
+    def save_calendar_png(self):
+        # Ask output path
+        path = filedialog.asksaveasfilename(
+            title="Guardar calendario",
+            defaultextension=".png",
+            filetypes=[
+                ("PNG image", "*.png"),
+            ],
         )
-        edit_button.pack(side="left", padx=6, pady=8)
+
+        if not path:
+            return
+
+        # Render and save full-size calendar
+        image = self.renderer.render()
+        image.save(path)
+
+        messagebox.showinfo(
+            "Guardado",
+            "Calendario guardado correctamente.",
+        )
 
     def make_left_panel(self, main_area):
         left_panel = ctk.CTkFrame(
@@ -153,6 +168,47 @@ class App:
         for day in WeekDay:
             self.make_day_section(left_content, day)
 
+    # Delete next word
+    def del_next_word(self, event):
+        entry = event.widget
+
+        cursor = entry.index("insert")
+        text = entry.get()
+
+        # Skip spaces
+        end = cursor
+        while end < len(text) and text[end].isspace():
+            end += 1
+
+        # Skip word
+        while end < len(text) and not text[end].isspace():
+            end += 1
+
+        entry.delete(cursor, end)
+
+        return "break"
+
+        # Delete previous word
+    def del_prev_word(self, event):
+        entry = event.widget
+
+        cursor = entry.index("insert")
+        text = entry.get()
+
+        start = cursor
+
+        # Skip spaces
+        while start > 0 and text[start - 1].isspace():
+            start -= 1
+
+        # Skip word
+        while start > 0 and not text[start - 1].isspace():
+            start -= 1
+
+        entry.delete(start, cursor)
+
+        return "break"
+
     def labeled_row(
         self,
         parent,
@@ -161,46 +217,6 @@ class App:
         padx=12,
         pady=(0, 12),
     ):
-        # Delete next word
-        def del_next_word(event):
-            entry = event.widget
-
-            cursor = entry.index("insert")
-            text = entry.get()
-
-            # Skip spaces
-            end = cursor
-            while end < len(text) and text[end].isspace():
-                end += 1
-
-            # Skip word
-            while end < len(text) and not text[end].isspace():
-                end += 1
-
-            entry.delete(cursor, end)
-
-            return "break"
-
-            # Delete previous word
-        def del_prev_word(event):
-            entry = event.widget
-
-            cursor = entry.index("insert")
-            text = entry.get()
-
-            start = cursor
-
-            # Skip spaces
-            while start > 0 and text[start - 1].isspace():
-                start -= 1
-
-            # Skip word
-            while start > 0 and not text[start - 1].isspace():
-                start -= 1
-
-            entry.delete(start, cursor)
-
-            return "break"
         # Make row
         row = ctk.CTkFrame(parent, fg_color="transparent")
         row.pack(fill="x", padx=padx, pady=pady)
@@ -223,11 +239,11 @@ class App:
 
         entry.bind(
             "<Control-Delete>",
-            del_next_word,
+            self.del_next_word,
         )
         entry.bind(
             "<Control-BackSpace>",
-            del_prev_word,
+            self.del_prev_word,
         )
 
         return row, label, entry
@@ -282,7 +298,7 @@ class App:
         self.make_rest_day_checkbox(day_section, day_model, disable_list)
 
         # Make day image selector
-        image = ThumbnailPreview(day_section, day_model.image, self.resources, self.on_model_changed)
+        image = ThumbnailPreview(day_section, day_model.thumbnail, self.resources, self.on_model_changed)
         disable_list.append(image)
 
         # Make stream title row
@@ -437,6 +453,14 @@ class App:
             textvariable=name_var,
             placeholder_text="Nombre",
         )
+        collab_member_entry.bind(
+            "<Control-Delete>",
+            self.del_next_word,
+        )
+        collab_member_entry.bind(
+            "<Control-BackSpace>",
+            self.del_prev_word,
+        )
         collab_member_entry.pack(side="left", fill="x", expand=True)
 
         # Make collab color button
@@ -575,17 +599,16 @@ class App:
             # Load platform icon
             icon_image = self.resources.load_platform_icon(
                 platform,
-                28,
-                28,
-                NORMAL_PLATFORM_ICON_COLOR,
+                color=NORMAL_PLATFORM_ICON_COLOR,
+                max_height=20,
             )
 
             # Convert platform icon to CTkImage
             icon = ctk.CTkImage(
-                light_image=icon_image,
-                dark_image=icon_image,
-                size=(28, 28),
+                icon_image,
+                size=(icon_image.width, icon_image.height)
             )
+
             self.platform_ctk_images[(day_model.day, platform)] = icon
 
             # Make platform icon label
@@ -709,15 +732,13 @@ class App:
         for platform in (Platform.TWITCH, Platform.YOUTUBE):
             icon_image = self.resources.load_platform_icon(
                 platform,
-                28,
-                28,
-                icon_color,
+                color=icon_color,
+                max_height=28,
             )
 
             icon = ctk.CTkImage(
-                light_image=icon_image,
-                dark_image=icon_image,
-                size=(28, 28),
+                icon_image,
+                size=(icon_image.width, icon_image.height)
             )
 
             self.platform_ctk_images[(day_model.day, platform, icon_color)] = icon
@@ -748,36 +769,56 @@ class App:
         self.model_preview_update()
 
     def model_preview_update(self):
-        def render_preview():
-            self.preview_update_job = None
-            self.render_generation += 1
-            Thread(
-                target=self.render_preview_worker,
-                args=(self.render_generation,),
-                daemon=True,
-            ).start()
-
         if self.preview_update_job is not None:
             self.root.after_cancel(self.preview_update_job)
 
         self.preview_update_job = self.root.after(
             120,
-            render_preview,
+            self.start_preview_render,
         )
 
-    def render_preview_worker(self, generation):
-        image = self.renderer.render()
+    def start_preview_render(self):
+        self.preview_update_job = None
+        self.render_pending = True
+
+        if self.render_thread_running:
+            return
+
+        self.render_thread_running = True
+
+        Thread(
+            target=self.render_preview_worker,
+            daemon=True,
+        ).start()
+
+    def render_preview_worker(self):
+        while True:
+            self.render_pending = False
+
+            image = self.renderer.render()
+
+            self.root.after(
+                0,
+                lambda image=image: self.finish_preview_render(image),
+            )
+
+            if not self.render_pending:
+                break
 
         self.root.after(
             0,
-            lambda: self.finish_preview_render(generation, image),
+            self.finish_preview_thread,
         )
 
-    def finish_preview_render(self, generation, image):
-        if generation != self.render_generation:
-            return
+    def finish_preview_render(self, image):
         self.rendered_preview_image = image
         self.update_preview_canvas()
+
+    def finish_preview_thread(self):
+        self.render_thread_running = False
+
+        if self.render_pending:
+            self.start_preview_render()
 
     def update_preview_canvas(self):
         # Get canvas size

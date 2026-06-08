@@ -1,4 +1,4 @@
-from PIL import Image
+from PIL import Image, ImageChops
 
 from model import ThumbnailModel
 from render.resources_loader import ResourcesLoader
@@ -58,5 +58,66 @@ class ThumbnailRenderer():
         # paste and resize
         result.alpha_composite(overlay)
         result.thumbnail((width, height))
+
+        return result
+
+    def scale_to_cover(
+        self,
+        img: Image.Image,
+        width: int,
+        height: int,
+    ) -> Image.Image:
+
+        # Compute scale that fully covers target area
+        scale = max(
+            width / img.width,
+            height / img.height,
+        )
+
+        new_width = round(img.width * scale)
+        new_height = round(img.height * scale)
+
+        # Resize image
+        return img.resize(
+            (new_width, new_height),
+            Image.Resampling.LANCZOS,
+        )
+
+    def render_masked(self) -> Image.Image:
+        # Load image and mask
+        img = self.get_cropped_image()
+        mask = self.resources.load_image(self.model.mask_path)
+
+        # Get visible mask area
+        mask_box = mask.getbbox()
+
+        if mask_box is None:
+            return Image.new("RGBA", mask.size)
+
+        mask_left, mask_top, mask_right, mask_bottom = mask_box
+        mask_width = mask_right - mask_left
+        mask_height = mask_bottom - mask_top
+
+        # Scale image to cover mask area
+        img = self.scale_to_cover(
+            img,
+            mask_width,
+            mask_height,
+        )
+
+        # Center image inside mask area
+        img_x = mask_left + (mask_width - img.width) // 2
+        img_y = mask_top + (mask_height - img.height) // 2
+
+        # Place image in full-size transparent result
+        result = Image.new("RGBA", mask.size)
+
+        result.alpha_composite(img, (img_x, img_y))
+
+        # Multiply with mask to mask it
+        result = ImageChops.multiply(result, mask)
+
+        # Multiply with opacity
+        result = ImageChops.multiply(result, Image.new("RGBA", result.size, (255, 255, 255, int(self.model.opacity*255))))
 
         return result

@@ -4,8 +4,9 @@ from PIL import Image
 from pathlib import Path
 
 from model import CalendarModel, WeekDay
-from render.resources_loader import ResourcesLoader, RESOURCE_DIR
+from render.resources_loader import ResourcesLoader, RESOURCE_DIR, Platform
 from render.day_renderer import DayRenderer
+from render.thumbnail_renderer import ThumbnailRenderer
 from render.text_renderer import TextRenderer, TextStyle
 
 
@@ -14,6 +15,7 @@ class CalendarRenderer:
         self.model = model
         self.resources = resources
         self.write = TextRenderer().render
+        self.fanart_renderer = ThumbnailRenderer(self.model.fanart, self.resources)
 
         self.day_renderers: dict[WeekDay, DayRenderer] = {
             day: DayRenderer(self.model.days[day], resources)
@@ -27,20 +29,64 @@ class CalendarRenderer:
 
         for week_day in WeekDay:
             day_img = self.day_renderers[week_day].render()
-            image.alpha_composite(day_img)
+            if day_img is not None:
+                image.alpha_composite(day_img)
+
+        footer = self.footer()
+        y_margin = 30
+        x = image.width//2 - footer.width//2
+        y = image.height-footer.height - y_margin
+        image.alpha_composite(footer, (x, y))
 
         return image
-    
-    # Background
+
+    def footer(self) -> Image.Image:
+        icon_size = 48
+        style = TextStyle(
+            font_size=58,
+            stroke_color="#f5789f",
+            stroke_width=16,
+        )
+
+        tw = self.resources.load_platform_icon(
+            Platform.TWITCH,
+            color="#a7afff",
+            max_height=icon_size,
+            max_width=icon_size,
+            circle_fill_color="#FFFFFF",
+            circle_padding=10,
+        )
+
+        tw_txt = self.write("twitch.tv/pinklingvt", style)
+
+        yt = self.resources.load_platform_icon(
+            Platform.YOUTUBE,
+            color="#f5789f",
+            max_height=icon_size,
+            max_width=icon_size,
+            circle_fill_color="#FFFFFF",
+            circle_padding=10,
+        )
+
+        yt_txt = self.write("youtube.com/@pinklingvt", style)
+
+        return self.resources.concat_imgs([tw, tw_txt, yt, yt_txt], spacing=16)
+
     def background(self) -> Image.Image:
         return self.resources.load_image(RESOURCE_DIR / "background.png")
-
 
     def header(self) -> Image.Image:
         # Load layers
         fanart_frame = self.resources.load_image(RESOURCE_DIR / "frames" / "fanart.png")
 
-        artist_text = self.render_fanart_artist_label()
+        artist_text = self.write(
+            self.model.fanart_artist,
+            TextStyle(
+                font_size=32,
+                stroke_color="#d57fc2",
+                stroke_width=4,
+            ),
+        )
 
         artist_bg = self.render_stretched(
             RESOURCE_DIR / "fanart text background.png",
@@ -56,23 +102,26 @@ class CalendarRenderer:
         fanart = Image.new(
             "RGBA",
             fanart_frame.size,
-            (0, 0, 0, 0),
         )
 
         # Composite artist label
-        artist_pos = (938 - artist_bg.width, 180)
-        fanart.alpha_composite(artist_bg, artist_pos)
+        x_corner, y_corner = 938, 180
+        xpad, ypad = 30, 7
+        artist_frame_pos = (x_corner - artist_bg.width, y_corner)
+        artist_txt_pos = (x_corner - artist_text.width - xpad, y_corner + ypad)
         fanart.alpha_composite(fanart_frame)
-        fanart.alpha_composite(artist_text, artist_pos)
-        fanart.alpha_composite(artist_fg, artist_pos,)
+        fanart.alpha_composite(self.fanart_renderer.render_masked())
+        fanart.alpha_composite(artist_bg, artist_frame_pos)
+        fanart.alpha_composite(artist_text, artist_txt_pos)
+        fanart.alpha_composite(artist_fg, artist_frame_pos,)
 
         # Write date
         date_text = self.write(
             self.model.date_range,
             TextStyle(
-                font_size=62,
+                font_size=80,
                 stroke_color="#f5789f",
-                stroke_width=13,
+                stroke_width=24,
             ),
         )
 
@@ -82,21 +131,6 @@ class CalendarRenderer:
         )
 
         return fanart
-
-    def render_fanart_artist_label(
-        self,
-    ) -> Image.Image:
-        # Render artist name
-        artist_text = self.write(
-            self.model.fanart_artist,
-            TextStyle(
-                font_size=28,
-                stroke_color="#d57fc2",
-                stroke_width=4,
-            ),
-        )
-
-        return artist_text
 
     def render_stretched(
         self,
@@ -119,7 +153,6 @@ class CalendarRenderer:
         result = Image.new(
             "RGBA",
             (img.width + stretched_width, img.height),
-            (0, 0, 0, 0),
         )
 
         # Paste fixed part

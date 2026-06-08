@@ -1,5 +1,9 @@
 from dataclasses import dataclass, field
+from pathlib import Path
 from enum import Enum
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+RESOURCE_DIR = PROJECT_ROOT / "resources"
 
 
 class WeekDay(Enum):
@@ -20,12 +24,14 @@ class Platform(Enum):
 @dataclass
 class CollabMember:
     name: str = ""
-    color: str = "#ffffff"
+    color: str = ""
 
 
 @dataclass
 class ThumbnailModel:
-    path: str | None = None
+    mask_path: str | Path
+    path: str | Path | None = None
+    opacity: float = 0.8
     crop_left: float = 0.0
     crop_top: float = 0.0
     crop_right: float = 1.0
@@ -35,8 +41,8 @@ class ThumbnailModel:
 @dataclass
 class DayModel:
     day: WeekDay
+    thumbnail: ThumbnailModel
     is_rest_day: bool = False
-    image: ThumbnailModel = field(default_factory=ThumbnailModel)
     title: str = ""
     subtitle: str = ""
     platform: Platform = Platform.TWITCH
@@ -47,9 +53,13 @@ class DayModel:
 @dataclass
 class CalendarModel:
     date_range: str = ""
-    fanart: ThumbnailModel = field(default_factory=ThumbnailModel)
+    fanart: ThumbnailModel = field(
+        default_factory=lambda: ThumbnailModel(
+            mask_path=RESOURCE_DIR / "masks" / "fanart.png",
+        )
+    )
     fanart_artist: str = ""
     days: dict[WeekDay, DayModel] = field(default_factory=lambda: {
-        day: DayModel(day)
+        day: DayModel(day, ThumbnailModel(mask_path=RESOURCE_DIR / "masks" / (day.name + ".png")))
         for day in WeekDay
     })

@@ -5,7 +5,7 @@ import customtkinter as ctk
 from PIL import ImageTk
 
 from model import CalendarModel, CollabMember, DayModel, Platform, WeekDay
-from render.resources_loader import ResourcesLoader
+from render.resources_loader import ResourcesLoader, RESOURCE_DIR
 from thumbnail_preview import ThumbnailPreview
 from render.calendar_renderer import CalendarRenderer
 from threading import Thread
@@ -43,6 +43,7 @@ class App:
         self.root = root
         self.root.title("Creador de calendarios")
         self.root.geometry("1200x800")
+        self.root.iconbitmap(RESOURCE_DIR / "icon.ico")
 
         self.model = CalendarModel()
         self.resources = ResourcesLoader()

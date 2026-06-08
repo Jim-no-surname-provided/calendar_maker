@@ -66,11 +66,12 @@ DAY_STYLES = {
 
 
 class DayRenderer:
-    def __init__(self, day_model: DayModel, resources: ResourcesLoader):
+    def __init__(self, day_model: DayModel, resources: ResourcesLoader, text_renderer: TextRenderer):
         self.model = day_model
         self.resources = resources
         self.thumbnail_renderer = ThumbnailRenderer(day_model.thumbnail, self.resources)
-        self.write = TextRenderer().render
+        self.text_renderer = text_renderer
+        self.write = self.text_renderer.render
 
     def render(self) -> Image.Image | None:
         style = DAY_STYLES[self.model.day]
@@ -142,7 +143,7 @@ class DayRenderer:
 
         txt.save("test.png")
 
-        frame.alpha_composite(txt, self.resources.offset_to_center(txt, mask))
+        frame.alpha_composite(txt, self.resources.offset_to_center_of_mass(txt, mask))
 
         return frame
 

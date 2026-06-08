@@ -14,11 +14,12 @@ class CalendarRenderer:
     def __init__(self, model: CalendarModel, resources: ResourcesLoader):
         self.model = model
         self.resources = resources
-        self.write = TextRenderer().render
+        self.text_renderer = TextRenderer()
+        self.write = self.text_renderer.render
         self.fanart_renderer = ThumbnailRenderer(self.model.fanart, self.resources)
 
         self.day_renderers: dict[WeekDay, DayRenderer] = {
-            day: DayRenderer(self.model.days[day], resources)
+            day: DayRenderer(self.model.days[day], resources, self.text_renderer)
             for day in WeekDay
         }
 

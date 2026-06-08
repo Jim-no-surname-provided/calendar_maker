@@ -5,6 +5,8 @@ from pathlib import Path
 from model import Platform
 from PIL import Image, ImageDraw
 from model import RESOURCE_DIR, PROJECT_ROOT
+import numpy as np
+import time
 
 CANVAS_WIDTH = 1080
 CANVAS_HEIGHT = 1920
@@ -192,37 +194,21 @@ class ResourcesLoader:
             (top + bottom) // 2,
         )
 
-    def get_center_of_mass(
-        self,
-        img: Image.Image,
-    ) -> tuple[int, int]:
-        # Use alpha as the visual weight
-        alpha = img.getchannel("A")
+    
+    def get_center_of_mass(self, img: Image.Image):
+        alpha = np.asarray(img.getchannel("A"), dtype=np.float32)
 
-        total_weight = 0
-        weighted_x = 0
-        weighted_y = 0
+        total = alpha.sum()
 
-        # Accumulate weighted positions
-        for y in range(alpha.height):
-            for x in range(alpha.width):
-                weight = alpha.getpixel((x, y))
-
-                # It should always be int. This is for the type checker
-                if weight == 0 or not isinstance(weight, int):
-                    continue
-
-                total_weight += weight
-                weighted_x += x * weight
-                weighted_y += y * weight
-
-        if total_weight == 0:
+        if total == 0:
             return (0, 0)
 
-        return (
-            round(weighted_x / total_weight),
-            round(weighted_y / total_weight),
-        )
+        y, x = np.indices(alpha.shape)
+
+        cx = (x * alpha).sum() / total
+        cy = (y * alpha).sum() / total
+
+        return round(cx), round(cy)
 
     def resolve_path(self, path: str | Path) -> Path:
         path = Path(path)

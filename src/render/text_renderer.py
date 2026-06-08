@@ -7,7 +7,7 @@ from io import BytesIO
 from model import RESOURCE_DIR
 
 
-@dataclass
+@dataclass(frozen=True)
 class TextStyle:
     font_size: int
     font_path: str | Path = RESOURCE_DIR / "Choripan.otf"
@@ -23,7 +23,22 @@ class TextStyle:
 
 
 class TextRenderer:
+    def __init__(self) -> None:
+        self.cache = {}
+
+
     def render(self, text: str, style: TextStyle) -> Image.Image:
+        cache_key = (text, style)
+
+        if cache_key not in self.cache:
+            self.cache[cache_key] = self._render_uncached(
+                text,
+                style,
+            )
+
+        return self.cache[cache_key].copy()
+
+    def _render_uncached(self, text: str, style: TextStyle) -> Image.Image:
         if text == "":
             return Image.new("RGBA", (1, 1))
 

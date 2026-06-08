@@ -4,3 +4,4 @@ resvg_py
 svgwrite
 pip-tools
 pyinstaller
+numpy

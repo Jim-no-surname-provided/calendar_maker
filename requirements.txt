@@ -18,6 +18,8 @@ customtkinter==5.2.2
     # via -r requirements.in
 darkdetect==0.8.0
     # via customtkinter
+numpy==2.4.6
+    # via -r requirements.in
 packaging==26.2
     # via
     #   build

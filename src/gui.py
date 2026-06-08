@@ -10,7 +10,7 @@ from render.resources_loader import ResourcesLoader, RESOURCE_DIR
 from thumbnail_preview import ThumbnailPreview
 from render.calendar_renderer import CalendarRenderer
 from threading import Thread
-
+import time
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -37,6 +37,7 @@ REST_RADIO_STYLE = {
     "hover_color": "#404040",
     "border_color": "#606060",
 }
+
 
 class FastScrollableFrame(ctk.CTkScrollableFrame):
     def _mouse_wheel_all(self, event):
@@ -85,6 +86,7 @@ class App:
 
         self.render_thread_running = False
         self.render_pending = False
+        self.preview_update_job = None
 
         self.create_layout()
 
@@ -793,59 +795,60 @@ class App:
         self.on_model_changed()
 
     def on_model_changed(self):
-        self.model_preview_update()
+        self.request_render()
 
-    def model_preview_update(self):
-        if self.preview_update_job is not None:
-            self.root.after_cancel(self.preview_update_job)
-
-        self.preview_update_job = self.root.after(
-            120,
-            self.start_preview_render,
-        )
-
-    def start_preview_render(self):
+    def request_render(self):
         self.preview_update_job = None
+
+        # Mark preview as dirty
         self.render_pending = True
 
+        # Let the current render finish
         if self.render_thread_running:
             return
 
         self.render_thread_running = True
 
+        # Start render worker
         Thread(
-            target=self.render_preview_worker,
+            target=self.render_worker,
             daemon=True,
         ).start()
 
-    def render_preview_worker(self):
-        while True:
+    def render_worker(self):
+        while self.render_pending:
+            # Render latest state
             self.render_pending = False
-
+            
+            
+            print("")
+            start = time.perf_counter()
             image = self.renderer.render()
+            print(f"Total render: {time.perf_counter() - start:.3f}s")
+            print("----------------------------------------------------------")
 
+            # Call in the main thread
             self.root.after(
                 0,
-                lambda image=image: self.finish_preview_render(image),
+                lambda image=image: self.finish_render(image),
             )
 
-            if not self.render_pending:
-                break
-
+        # Call in the main thread
         self.root.after(
             0,
-            self.finish_preview_thread,
+            self.finish_render_thread,
         )
 
-    def finish_preview_render(self, image):
+    def finish_render(self, image):
         self.rendered_preview_image = image
         self.update_preview_canvas()
 
-    def finish_preview_thread(self):
+    def finish_render_thread(self):
         self.render_thread_running = False
 
+        # Handle updates that arrived during rendering
         if self.render_pending:
-            self.start_preview_render()
+            self.request_render()
 
     def update_preview_canvas(self):
         # Get canvas size

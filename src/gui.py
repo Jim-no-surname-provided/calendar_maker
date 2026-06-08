@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import colorchooser, filedialog, messagebox
+import sys
 
 import customtkinter as ctk
 from PIL import ImageTk
@@ -36,6 +37,31 @@ REST_RADIO_STYLE = {
     "hover_color": "#404040",
     "border_color": "#606060",
 }
+
+class FastScrollableFrame(ctk.CTkScrollableFrame):
+    def _mouse_wheel_all(self, event):
+        if self.check_if_master_is_canvas(event.widget):
+            if sys.platform.startswith("win"):
+                if self._shift_pressed:
+                    if self._parent_canvas.xview() != (0.0, 1.0):
+                        self._parent_canvas.xview("scroll", -int(event.delta / 2), "units")
+                else:
+                    if self._parent_canvas.yview() != (0.0, 1.0):
+                        self._parent_canvas.yview("scroll", -int(event.delta / 2), "units")
+            elif sys.platform == "darwin":
+                if self._shift_pressed:
+                    if self._parent_canvas.xview() != (0.0, 1.0):
+                        self._parent_canvas.xview("scroll", -event.delta, "units")
+                else:
+                    if self._parent_canvas.yview() != (0.0, 1.0):
+                        self._parent_canvas.yview("scroll", -event.delta, "units")
+            else:
+                if self._shift_pressed:
+                    if self._parent_canvas.xview() != (0.0, 1.0):
+                        self._parent_canvas.xview("scroll", -event.delta, "units")
+                else:
+                    if self._parent_canvas.yview() != (0.0, 1.0):
+                        self._parent_canvas.yview("scroll", -event.delta, "units")
 
 
 class App:
@@ -156,7 +182,7 @@ class App:
         main_area.add(left_panel, minsize=420, width=620)
 
         # Make scrollable content area
-        left_content = ctk.CTkScrollableFrame(
+        left_content = FastScrollableFrame(
             left_panel,
             corner_radius=0,
         )

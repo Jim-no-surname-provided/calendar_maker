@@ -5,7 +5,7 @@ a = Analysis(
     ['src\\app.py'],
     pathex=[],
     binaries=[],
-    datas=[('resources', 'resources'), ('.venv/Lib/site-packages/customtkinter', 'customtkinter')],
+    datas=[('resources', 'resources')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

@@ -105,7 +105,7 @@ class CalendarRenderer:
         )
 
         # Composite artist label
-        x_corner, y_corner = 938, 180
+        x_corner, y_corner = 938, 187
         xpad, ypad = 30, 7
         artist_frame_pos = (x_corner - artist_bg.width, y_corner)
         artist_txt_pos = (x_corner - artist_text.width - xpad, y_corner + ypad)

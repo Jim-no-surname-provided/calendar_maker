@@ -24,7 +24,6 @@ class CalendarRenderer:
 
     def render(self) -> Image.Image:
         image = self.background()
-
         image.alpha_composite(self.header())
 
         for week_day in WeekDay:
@@ -37,6 +36,9 @@ class CalendarRenderer:
         x = image.width//2 - footer.width//2
         y = image.height-footer.height - y_margin
         image.alpha_composite(footer, (x, y))
+
+        stickers = self.resources.load_image(RESOURCE_DIR / "stickers.png")
+        image.alpha_composite(stickers)
 
         return image
 

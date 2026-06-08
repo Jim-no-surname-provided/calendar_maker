@@ -103,7 +103,7 @@ class DayRenderer:
 
         # Render texts on top of each other
         packed_texts = self.resources.pack_imgs(texts, spacing=-4)
-        packed_pos = self.resources.offset_to_center(packed_texts, mask)
+        packed_pos = self.resources.offset_to_center_of_mass(packed_texts, mask)
 
         # Render icon
         icon = self.render_platform_icon()

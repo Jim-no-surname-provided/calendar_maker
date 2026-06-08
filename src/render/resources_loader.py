@@ -132,6 +132,16 @@ class ResourcesLoader:
 
         return icon
 
+    def offset_to_center_of_mass(
+        self,
+        source: Image.Image,
+        target: Image.Image,
+    ) -> tuple[int, int]:
+        t_c = self.get_center_of_mass(target)
+        s_c = self.get_center_of_mass(source)
+
+        return (t_c[0] - s_c[0], t_c[1] - s_c[1])
+
     def offset_to_center(
         self,
         source: Image.Image,

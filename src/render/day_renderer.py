@@ -120,9 +120,6 @@ class DayRenderer:
         return result
 
     def rest_day(self, day_style: DayStyle, frame: Image.Image, mask: Image.Image) -> Image.Image:
-        # Add white background
-        frame.alpha_composite(mask)
-
         # make gray overlay
         overlay = Image.new(
             "RGBA",
